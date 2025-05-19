@@ -2,10 +2,14 @@ import customtkinter
 import tkinter as tk
 from PIL import Image # Adicionado para carregar a imagem do logo
 
-class Dashboard(customtkinter.CTk):
-    def __init__(self):
-        super().__init__()
+# Importa as funções do nosso novo módulo de banco de dados (se necessário no futuro para o Dashboard).
+# import database # Descomente se o Dashboard precisar interagir diretamente com o banco.
 
+class Dashboard(customtkinter.CTk):
+    def __init__(self, user_id=None): # Adiciona user_id como parâmetro opcional.
+        super().__init__()
+        self.current_user_id = user_id # Armazena o ID do usuário.
+        print(f"Dashboard iniciado para o usuário ID: {self.current_user_id}")
         # Configure window
         self.title("Gestão Financeira - Dashboard")
         self.geometry("1024x768") # Set a default window size
@@ -78,7 +82,8 @@ class Dashboard(customtkinter.CTk):
 
         # --- Bottom Container for Action Buttons and Logo ---
         self.actions_container_frame = customtkinter.CTkFrame(self, corner_radius=0, fg_color="transparent") # Sem cantos e transparente
-        self.actions_container_frame.grid(row=3, column=0, columnspan=2, padx=0, pady=(10,0), sticky="nsew")
+        # Aumentado o pady inferior para criar mais espaço abaixo dos botões.
+        self.actions_container_frame.grid(row=3, column=0, columnspan=2, padx=0, pady=(10,20), sticky="nsew")
 
         # Frame interno para centralizar os botões
         buttons_inner_frame = customtkinter.CTkFrame(self.actions_container_frame, fg_color="transparent")

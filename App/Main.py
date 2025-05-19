@@ -9,6 +9,8 @@ from PySide6.QtCore import Qt, QSize # Para alinhamentos, tamanhos, etc.
 
 # Importa a classe Dashboard do arquivo Dashboard.py
 from Dashboard import Dashboard
+# Importa as funções do nosso novo módulo de banco de dados.
+import Database
 
 # Índice de Telas e Containers:
 # Esta lista servirá como um índice para todas as telas ou containers que desenvolvermos.
@@ -29,6 +31,11 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         self.imagem_fundo = None # Atributo para armazenar o QPixmap da imagem de fundo
 
         self.dashboard_window = None # Referência para a janela do dashboard
+
+        # Inicializa o banco de dados e as tabelas.
+        Database.create_tables()
+        # Adiciona o usuário padrão "Lucas" se ele não existir.
+        Database.add_user("01", "Lucas")
         self.init_ui() # Chama o método para inicializar a interface do usuário.
 
     def init_ui(self):
@@ -81,10 +88,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
 
         # Caixa de seleção (ComboBox) para os usuários.
         self.combo_usuario = QComboBox(user_input_frame) # Cria um QComboBox.
-        usuarios_cadastrados = ["Selecione"] # Valores de exemplo.
-        self.combo_usuario.addItems(usuarios_cadastrados) # Adiciona os itens.
-        # Largura mínima da caixa de seleção reduzida.
-        self.combo_usuario.setMinimumWidth(160) # Define uma largura mínima.
+        self.combo_usuario.setMinimumWidth(180) # Ajuste da largura mínima.
         self.combo_usuario.setFont(QFont("Arial", 12)) # Define a fonte.
         # Estilização do ComboBox via QSS (Qt Style Sheets).
         self.combo_usuario.setStyleSheet("""
@@ -112,6 +116,9 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
             }
         """)
         user_input_layout.addWidget(self.combo_usuario) # Adiciona ao layout horizontal.
+        
+        # Carrega os usuários do banco de dados para a ComboBox.
+        self.load_users_into_combobox()
 
         login_elements_layout.addWidget(user_input_frame) # Adiciona o frame de input ao layout vertical.
 
@@ -123,7 +130,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         # Dimensões do botão reduzidas.
         self.button_iniciar.setMinimumHeight(35) # Define altura mínima.
         self.button_iniciar.setMinimumWidth(180) # Define largura mínima.
-        self.button_iniciar.setFont(QFont("Arial", 16, QFont.Weight.Bold)) # Define a fonte.
+        self.button_iniciar.setFont(QFont("Arial", 14, QFont.Weight.Bold)) # Define a fonte (tamanho ligeiramente reduzido).
         # Estilização do botão via QSS.
         self.button_iniciar.setStyleSheet("""
             QPushButton {
@@ -160,14 +167,25 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
 
     # Método para abrir a janela do Dashboard.
     def abrir_dashboard(self):
+        # Obtém o ID do usuário selecionado na ComboBox.
+        # O método currentData() retorna o dado associado ao item selecionado (que definimos como o ID do usuário).
+        selected_user_id = self.combo_usuario.currentData()
+
+        # Verifica se um usuário válido foi selecionado.
+        if selected_user_id is None or self.combo_usuario.currentIndex() == 0: # O índice 0 é "Selecione o usuário"
+            print("Nenhum usuário selecionado. Por favor, selecione um usuário para continuar.")
+            # Opcional: Mostrar uma mensagem de erro para o usuário na GUI.
+            # Exemplo: QMessageBox.warning(self, "Seleção Inválida", "Por favor, selecione um usuário.")
+            return # Não prossegue se nenhum usuário válido for selecionado.
+
         # Esconde a janela de login atual.
         self.hide()
 
         # Cria e exibe a janela do Dashboard.
         # O Dashboard (customtkinter) tem seu próprio loop de eventos (mainloop).
         try:
-            print("Abrindo o Dashboard...")
-            self.dashboard_window = Dashboard() # Cria uma instância da classe Dashboard.
+            print(f"Abrindo o Dashboard para o usuário ID: {selected_user_id}...")
+            self.dashboard_window = Dashboard(user_id=selected_user_id) # Passa o ID do usuário para o Dashboard.
             self.dashboard_window.mainloop()    # Inicia o loop de eventos do customtkinter para o Dashboard.
         except Exception as e:
             print(f"Erro ao tentar abrir o Dashboard: {e}")
@@ -176,6 +194,21 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         # Após o dashboard_window.mainloop() terminar (ou seja, a janela do dashboard for fechada),
         # fecha a aplicação de login (PySide6).
         self.close() # Fecha a janela de login (e, por consequência, a aplicação PySide6 se for a última janela).
+
+    def load_users_into_combobox(self):
+        """Busca usuários do banco de dados e os carrega na QComboBox."""
+        print("Carregando usuários na ComboBox...")
+        self.combo_usuario.clear() # Limpa itens existentes.
+        
+        users = Database.get_all_users() # Busca todos os usuários do banco.
+        if not users:
+            self.combo_usuario.addItem("Nenhum usuário cadastrado", None) # Adiciona item placeholder se não houver usuários.
+        else:
+            self.combo_usuario.addItem("Selecionar", None) # Adiciona um item inicial "Selecione".
+            for user in users:
+                # Adiciona o nome do usuário como texto e o ID como dado associado.
+                self.combo_usuario.addItem(user["name"], user["id"])
+        print(f"{len(users)} usuários carregados.")
 
 def main():
     # Cria a aplicação Qt.
