@@ -7,12 +7,16 @@ from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QComboBox,
 from PySide6.QtGui import QPixmap, QPainter, QColor, QFont # Para imagens, pintura, cores e fontes.
 from PySide6.QtCore import Qt, QSize # Para alinhamentos, tamanhos, etc.
 
+# Importa a classe Dashboard do arquivo Dashboard.py
+from Dashboard import Dashboard
+
 # Índice de Telas e Containers:
 # Esta lista servirá como um índice para todas as telas ou containers que desenvolvermos.
 # À medida que criarmos novas interfaces ou seções lógicas, vamos adicioná-las aqui.
 indice_telas_containers = [
     "- Tela de Login", # Adiciona a Tela de Login ao índice.
     # Exemplo: "- Container de Cadastro de Transações",
+    "- Tela Dashboard", # Adiciona a Tela Dashboard ao índice.
 ]
 
 # Classe principal da janela de Login.
@@ -24,6 +28,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         self.caminho_imagem_fundo = "Images/Fundo.png" # Caminho relativo para a imagem
         self.imagem_fundo = None # Atributo para armazenar o QPixmap da imagem de fundo
 
+        self.dashboard_window = None # Referência para a janela do dashboard
         self.init_ui() # Chama o método para inicializar a interface do usuário.
 
     def init_ui(self):
@@ -134,6 +139,8 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
                 background-color: #1C7ECE; /* Azul um pouco mais escuro ao pressionar */
             }
         """)
+        # Conecta o sinal clicked do botão ao método abrir_dashboard.
+        self.button_iniciar.clicked.connect(self.abrir_dashboard)
         login_elements_layout.addWidget(self.button_iniciar, alignment=Qt.AlignmentFlag.AlignCenter) # Adiciona ao layout vertical, centralizado.
         # Removemos o stretch interno do login_elements_layout para que o container se ajuste ao conteúdo.
 
@@ -150,6 +157,25 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
             # Se a imagem não carregou, preenche com uma cor sólida (alternativa ao stylesheet).
             painter.fillRect(self.rect(), QColor("#2b2b2b"))
         super().paintEvent(event) # Chama o paintEvent da classe pai.
+
+    # Método para abrir a janela do Dashboard.
+    def abrir_dashboard(self):
+        # Esconde a janela de login atual.
+        self.hide()
+
+        # Cria e exibe a janela do Dashboard.
+        # O Dashboard (customtkinter) tem seu próprio loop de eventos (mainloop).
+        try:
+            print("Abrindo o Dashboard...")
+            self.dashboard_window = Dashboard() # Cria uma instância da classe Dashboard.
+            self.dashboard_window.mainloop()    # Inicia o loop de eventos do customtkinter para o Dashboard.
+        except Exception as e:
+            print(f"Erro ao tentar abrir o Dashboard: {e}")
+            self.show() # Se houver um erro, mostra a janela de login novamente.
+        
+        # Após o dashboard_window.mainloop() terminar (ou seja, a janela do dashboard for fechada),
+        # fecha a aplicação de login (PySide6).
+        self.close() # Fecha a janela de login (e, por consequência, a aplicação PySide6 se for a última janela).
 
 def main():
     # Cria a aplicação Qt.
