@@ -68,4 +68,5 @@ if __name__ == "__main__":
     create_tables() # Garante que as tabelas existam.
     # Adiciona o usuário Lucas como exemplo inicial.
     add_user("01", "Lucas")
+    # add_user("02", "Maria") # Linha para adicionar Maria foi removida/comentada
     print("Usuários cadastrados:", get_all_users())

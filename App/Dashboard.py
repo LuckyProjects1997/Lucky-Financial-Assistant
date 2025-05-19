@@ -1,6 +1,7 @@
 import customtkinter
 import tkinter as tk
 from PIL import Image # Adicionado para carregar a imagem do logo
+import datetime # Para obter o ano atual
 
 # Importa as funções do nosso novo módulo de banco de dados (se necessário no futuro para o Dashboard).
 # import database # Descomente se o Dashboard precisar interagir diretamente com o banco.
@@ -25,10 +26,29 @@ class Dashboard(customtkinter.CTk):
         self.grid_rowconfigure(3, weight=0) # New row for action buttons and logo
 
 
-        # --- Title ---
-        self.title_label = customtkinter.CTkLabel(self, text="Dashboard", font=customtkinter.CTkFont(size=24, weight="bold"))
-        self.title_label.grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 10), sticky="w") # Span across two columns
+        # --- Header Frame (Title and Year Selector) ---
+        self.header_frame = customtkinter.CTkFrame(self, fg_color="transparent")
+        self.header_frame.grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 10), sticky="ew")
 
+        self.title_label = customtkinter.CTkLabel(self.header_frame, text="Dashboard", font=customtkinter.CTkFont(size=24, weight="bold"))
+        self.title_label.pack(side="left", anchor="w")
+
+        # Year Selector elements
+        self.year_selector_frame = customtkinter.CTkFrame(self.header_frame, fg_color="transparent")
+        self.year_selector_frame.pack(side="right", anchor="e")
+
+        self.year_label = customtkinter.CTkLabel(self.year_selector_frame, text="Ano Referência:", font=customtkinter.CTkFont(size=14))
+        self.year_label.pack(side="left", padx=(0, 5))
+
+        current_year = datetime.datetime.now().year
+        # Gera uma lista de anos, por exemplo, 5 anos para trás e 2 para frente.
+        year_options = [str(y) for y in range(current_year - 5, current_year + 3)]
+
+        self.year_combobox = customtkinter.CTkComboBox(self.year_selector_frame, values=year_options, width=100)
+        self.year_combobox.set(str(current_year)) # Define o ano atual como padrão
+        self.year_combobox.pack(side="left")
+        # Adicionar comando ao combobox se precisar reagir à mudança de ano:
+        # self.year_combobox.configure(command=self.year_changed_event)
 
         # --- Top Container for Months ---
         self.months_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2)
@@ -135,6 +155,10 @@ class Dashboard(customtkinter.CTk):
             print(f"Erro: Imagem do logo '{logo_image_path}' não encontrada.")
         except Exception as e:
             print(f"Erro ao carregar a imagem do logo: {e}")
+
+    # def year_changed_event(self, selected_year):
+    #     print(f"Ano selecionado: {selected_year}")
+    #     # Aqui você adicionaria a lógica para recarregar os dados do dashboard para o ano selecionado.
 
 if __name__ == "__main__":
     app = Dashboard()

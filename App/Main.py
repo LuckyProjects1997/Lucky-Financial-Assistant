@@ -2,7 +2,7 @@
 
 # Importa os módulos necessários do PySide6 para a interface gráfica.
 import sys # Usado para sair da aplicação.
-from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QComboBox, 
+from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QComboBox, QMessageBox,
                                QPushButton, QVBoxLayout, QHBoxLayout, QFrame) # Widgets e layouts.
 from PySide6.QtGui import QPixmap, QPainter, QColor, QFont # Para imagens, pintura, cores e fontes.
 from PySide6.QtCore import Qt, QSize # Para alinhamentos, tamanhos, etc.
@@ -29,6 +29,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         self.altura_janela = 940
         self.caminho_imagem_fundo = "Images/Fundo.png" # Caminho relativo para a imagem
         self.imagem_fundo = None # Atributo para armazenar o QPixmap da imagem de fundo
+        self.original_imagem_fundo = None # Atributo para armazenar a imagem de fundo original não escalada
 
         self.dashboard_window = None # Referência para a janela do dashboard
 
@@ -41,14 +42,21 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
     def init_ui(self):
         # Configurações da janela principal.
         self.setWindowTitle("Lucky Financial Assistant - Login") # Define o título da janela.
-        self.setFixedSize(self.largura_janela, self.altura_janela) # Define um tamanho fixo para a janela.
+        # Define o tamanho inicial da janela.
+        self.resize(self.largura_janela, self.altura_janela)
+        # Define um tamanho mínimo para a janela para garantir que os elementos não fiquem muito espremidos.
+        self.setMinimumSize(600, 500) # Você pode ajustar esses valores.
 
-        # Carrega a imagem de fundo.
-        self.imagem_fundo = QPixmap(self.caminho_imagem_fundo) # Cria um QPixmap a partir do arquivo de imagem.
-        if self.imagem_fundo.isNull(): # Verifica se a imagem foi carregada corretamente.
+        # Carrega a imagem de fundo original.
+        self.original_imagem_fundo = QPixmap(self.caminho_imagem_fundo)
+        if self.original_imagem_fundo.isNull(): # Verifica se a imagem foi carregada corretamente.
             print(f"Erro: A imagem de fundo '{self.caminho_imagem_fundo}' não foi encontrada ou não pôde ser carregada.")
             # Define uma cor de fundo padrão caso a imagem falhe ao carregar.
             self.setStyleSheet("background-color: #2b2b2b;") # Um cinza escuro.
+            self.imagem_fundo = None # Garante que imagem_fundo seja None se a original não carregar
+        else:
+            # Escala a imagem de fundo para o tamanho inicial da janela.
+            self.imagem_fundo = self.original_imagem_fundo.scaled(self.size(), Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
         
         # Layout principal para posicionar o conteúdo de login.
         # Usaremos fatores de stretch para empurrar o container de login para a posição vertical desejada.
@@ -165,6 +173,15 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
             painter.fillRect(self.rect(), QColor("#2b2b2b"))
         super().paintEvent(event) # Chama o paintEvent da classe pai.
 
+    def resizeEvent(self, event):
+        """Chamado quando a janela é redimensionada."""
+        # Redimensiona a imagem de fundo para o novo tamanho da janela, se a imagem original existir.
+        if self.original_imagem_fundo and not self.original_imagem_fundo.isNull():
+            self.imagem_fundo = self.original_imagem_fundo.scaled(event.size(), Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        
+        super().resizeEvent(event) # Chama o método da classe pai para processar o evento de redimensionamento.
+        self.update() # Força um redesenho da janela para aplicar a imagem de fundo redimensionada.
+
     # Método para abrir a janela do Dashboard.
     def abrir_dashboard(self):
         # Obtém o ID do usuário selecionado na ComboBox.
@@ -174,8 +191,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         # Verifica se um usuário válido foi selecionado.
         if selected_user_id is None or self.combo_usuario.currentIndex() == 0: # O índice 0 é "Selecione o usuário"
             print("Nenhum usuário selecionado. Por favor, selecione um usuário para continuar.")
-            # Opcional: Mostrar uma mensagem de erro para o usuário na GUI.
-            # Exemplo: QMessageBox.warning(self, "Seleção Inválida", "Por favor, selecione um usuário.")
+            QMessageBox.warning(self, "Seleção Inválida", "Por favor, selecione um usuário para continuar.")
             return # Não prossegue se nenhum usuário válido for selecionado.
 
         # Esconde a janela de login atual.
