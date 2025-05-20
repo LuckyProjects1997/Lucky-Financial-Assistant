@@ -197,6 +197,26 @@ def add_transaction(transaction_id, user_id, category_id, description, value, du
         return False
     finally:
         conn.close()
+
+def delete_transaction(transaction_id):
+    """Exclui uma transação do banco de dados pelo seu ID."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
+        conn.commit()
+        if cursor.rowcount > 0:
+            print(f"Transação com ID '{transaction_id}' excluída com sucesso.")
+            return True
+        else:
+            print(f"Nenhuma transação encontrada com ID '{transaction_id}' para excluir.")
+            return False
+    except sqlite3.Error as e:
+        print(f"Erro ao excluir transação ID '{transaction_id}': {e}")
+        return False
+    finally:
+        conn.close()
+        
 def delete_category(category_id):
     """Exclui uma categoria do banco de dados pelo seu ID."""
     conn = get_db_connection()
