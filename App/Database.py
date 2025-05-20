@@ -2,6 +2,8 @@
 
 import sqlite3 # Módulo para interagir com bancos de dados SQLite.
 import os # Módulo para interagir com o sistema operacional, usado para caminhos de arquivo.
+import sys # Para sys.exit em caso de erro crítico
+
 
 # Obtém o diretório onde o script database.py está localizado.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -17,62 +19,67 @@ def get_db_connection():
 
 def create_tables():
     """Cria as tabelas necessárias no banco de dados se elas não existirem."""
-    conn = get_db_connection() # Obtém uma conexão com o banco.
-    cursor = conn.cursor() # Cria um cursor para executar comandos SQL.
+    print(f"DEBUG DB: Tentando criar tabelas em {DATABASE_NAME}...") # Added
+    conn = None # Initialize conn
+    try: # Added try-finally to ensure conn.close()
+        conn = get_db_connection() # Obtém uma conexão com o banco.
+        cursor = conn.cursor() # Cria um cursor para executar comandos SQL.
+        print("DEBUG DB: Conexão e cursor obtidos.") # Added
 
-    # Cria a tabela 'users' se ela não existir.
-    # id: Identificador único do usuário (TEXTO, chave primária).
-    # name: Nome do usuário (TEXTO, não pode ser nulo).
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL
-        )
-    """)
-    
-    # Cria a tabela 'categories' se ela não existir.
-    # id: Identificador único da categoria (TEXTO, chave primária).
-    # user_id: ID do usuário ao qual esta categoria pertence (TEXTO, chave estrangeira para users.id).
-    # name: Nome da categoria (TEXTO, não pode ser nulo).
-    # type: Tipo da categoria ('Despesa' ou 'Provento') (TEXTO, não pode ser nulo).
-    # color: Cor associada à categoria (TEXTO, formato hexadecimal, ex: '#FF0000').
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS categories (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            name TEXT NOT NULL,
-            type TEXT NOT NULL,
-            color TEXT NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-    """)
+        # Cria a tabela 'users' se ela não existir.
+        print("DEBUG DB: Criando tabela 'users'...") # Added
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL
+            )
+        """)
+        print("DEBUG DB: Tabela 'users' criada/verificada.") # Added
+        
+        # Cria a tabela 'categories' se ela não existir.
+        print("DEBUG DB: Criando tabela 'categories'...") # Added
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS categories (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                color TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        """)
+        print("DEBUG DB: Tabela 'categories' criada/verificada.") # Added
 
-    # Cria a tabela 'transactions' se ela não existir.
-    # id: Identificador único da transação (TEXTO, chave primária).
-    # user_id: ID do usuário ao qual esta transação pertence (TEXTO, chave estrangeira para users.id).
-    # category_id: ID da categoria associada (TEXTO, chave estrangeira para categories.id).
-    # description: Descrição da transação (TEXTO, não pode ser nulo).
-    # value: Valor da transação (REAL, para números decimais).
-    # due_date: Data prevista (TEXTO, formato YYYY-MM-DD).
-    # payment_date: Data de pagamento (TEXTO, formato YYYY-MM-DD, pode ser nulo).
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS transactions (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            category_id TEXT NOT NULL,
-            description TEXT NOT NULL,
-            value REAL NOT NULL,
-            due_date TEXT NOT NULL,
-            payment_date TEXT,
-            FOREIGN KEY (user_id) REFERENCES users (id),
-            FOREIGN KEY (category_id) REFERENCES categories (id)
-        )
-    """)
-    # Adicionar outras tabelas aqui no futuro (ex: categories, transactions)
+        # Cria a tabela 'transactions' se ela não existir.
+        print("DEBUG DB: Criando tabela 'transactions'...") # Added
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transactions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                category_id TEXT NOT NULL,
+                description TEXT NOT NULL,
+                value REAL NOT NULL,
+                due_date TEXT NOT NULL,
+                payment_date TEXT,
+                status TEXT, -- Coluna para armazenar o status da transação (ex: 'Pago', 'Em Aberto')
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (category_id) REFERENCES categories (id)
+            )
+        """)
+        print("DEBUG DB: Tabela 'transactions' criada/verificada.") # Added
+        # Adicionar outras tabelas aqui no futuro (ex: categories, transactions)
 
-    conn.commit() # Salva as alterações no banco de dados.
-    conn.close() # Fecha a conexão com o banco de dados.
-    print("Tabelas verificadas/criadas com sucesso.")
+        conn.commit() # Salva as alterações no banco de dados.
+        print("DEBUG DB: Commit realizado.") # Added
+        print("Tabelas verificadas/criadas com sucesso.")
+    except sqlite3.Error as e: # Added
+        print(f"DEBUG DB: Erro SQLite durante create_tables: {e}") # Added
+    except Exception as e: # Added
+        print(f"DEBUG DB: Erro geral durante create_tables: {e}") # Added
+    finally: # Added
+        if conn:
+            conn.close() # Fecha a conexão com o banco de dados.
+            print("DEBUG DB: Conexão fechada.") # Added
 
 def add_user(user_id, name):
     """Adiciona um novo usuário ao banco de dados se o ID não existir."""
@@ -166,15 +173,15 @@ def update_category(category_id, name, category_type, color):
     finally:
         conn.close()
 
-def add_transaction(transaction_id, user_id, category_id, description, value, due_date, payment_date=None):
+def add_transaction(transaction_id, user_id, category_id, description, value, due_date, payment_date=None, status=None):
     """Adiciona uma nova transação ao banco de dados."""
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (transaction_id, user_id, category_id, description, value, due_date, payment_date))
+            INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (transaction_id, user_id, category_id, description, value, due_date, payment_date, status))
         conn.commit()
         if cursor.rowcount > 0:
             print(f"Transação '{description}' (ID: {transaction_id}) adicionada com sucesso para o usuário ID: {user_id}.")
@@ -285,7 +292,7 @@ def get_category_summary_for_month(user_id, year, month_number):
     Retorna uma lista de dicionários: {'category_name': str, 'category_type': str, 'category_color': str, 'total_value': float}
     """
     conn = get_db_connection()
-    print(f"DEBUG DB: get_category_summary_for_month - user_id: {user_id}, year: {year}, month_number: {month_number}")
+    print(f"DEBUG DB: get_category_summary_for_month (SUM) - user_id: {user_id}, year: {year}, month_number: {month_number}")
     cursor = conn.cursor()
     query = """
         SELECT
@@ -308,7 +315,7 @@ def get_category_summary_for_month(user_id, year, month_number):
     """
     cursor.execute(query, (user_id, str(year), month_number))
     results = cursor.fetchall()
-    print(f"DEBUG DB: get_category_summary_for_month - Raw results: {results}")
+    print(f"DEBUG DB: get_category_summary_for_month (SUM) - Raw results: {results}")
     conn.close()
     return results
 
@@ -344,6 +351,43 @@ def get_category_totals_for_year(user_id, year, category_type):
     results = cursor.fetchall()
     conn.close()
     return [{"category_name": row["category_name"], "category_color": row["category_color"], "total_value": row["total_value"]} for row in results]
+def get_transactions_for_month(user_id, year, month_number):
+    """
+    Busca todas as transações para um usuário, ano e mês específicos.
+    O mês é filtrado pela due_date.
+    Retorna uma lista de dicionários.
+    """
+    conn = get_db_connection()
+    print(f"DEBUG DB: get_transactions_for_month (DETAILS) - user_id: {user_id}, year: {year}, month_number: {month_number}")
+    cursor = conn.cursor()
+    query = """
+        SELECT
+            t.id,
+            t.description,
+            t.value,
+            t.due_date,
+            t.payment_date,
+            t.status,
+            c.name AS category_name,
+            c.type AS category_type,
+            c.color AS category_color
+        FROM
+            transactions t
+        JOIN
+            categories c ON t.category_id = c.id
+        WHERE
+            t.user_id = ? AND
+            SUBSTR(t.due_date, 1, 4) = ? AND -- Ano
+            CAST(SUBSTR(t.due_date, 6, 2) AS INTEGER) = ? -- Mês
+        ORDER BY
+            t.due_date ASC, c.type DESC; -- Ordena por data, e proventos antes de despesas para mesma data
+    """
+    cursor.execute(query, (user_id, str(year), month_number))
+    results = cursor.fetchall()
+    print(f"DEBUG DB: get_transactions_for_month (DETAILS) - Raw results: {results}")
+    conn.close()
+    return results
+
 
 # Bloco para inicializar o banco de dados quando este script for executado diretamente (opcional, para teste).
 if __name__ == "__main__":

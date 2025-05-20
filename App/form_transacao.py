@@ -235,7 +235,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
 
         transaction_id = str(uuid.uuid4())
 
-        success = Database.add_transaction(transaction_id, self.current_user_id, selected_category['id'], description, value, due_date_db, payment_date_db)
+        success = Database.add_transaction(transaction_id, self.current_user_id, selected_category['id'], description, value, due_date_db, payment_date_db, status)
 
         if success:
             print(f"{self.tipo_transacao} salva com sucesso!") # TODO: Mostrar alerta na GUI

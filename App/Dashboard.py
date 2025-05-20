@@ -343,10 +343,10 @@ class Dashboard(customtkinter.CTk):
                 total_val_label.grid(row=i + 1, column=1, sticky="ew", pady=1)
 
         # Criar seção de Despesas
-        create_summary_section(self.annual_list_container_frame, "Despesas Anuais por Categoria", "Despesa")
+        create_summary_section(self.annual_list_container_frame, "Despesas:", "Despesa")
 
         # Criar seção de Proventos
-        create_summary_section(self.annual_list_container_frame, "Proventos Anuais por Categoria", "Provento")
+        create_summary_section(self.annual_list_container_frame, "Proventos:", "Provento")
 
     def load_monthly_details_for_list_container(self):
         # Limpa o conteúdo anterior do list_container_frame
@@ -507,6 +507,16 @@ class Dashboard(customtkinter.CTk):
         colors = [item['category_color'] for item in annual_expenses_raw]
         self._create_pie_chart(self.annual_pie_chart_container_frame, sizes, labels, colors, f"Despesas Anuais ({selected_year})")
 
+    def _refresh_dashboard_data(self):
+        """
+        Chamado para atualizar os dados exibidos no Dashboard.
+        Isso é útil após salvar uma nova transação, por exemplo.
+        """
+        print("Dashboard: _refresh_dashboard_data chamado. Atualizando dados...")
+        self.load_annual_category_summaries()
+        self.load_monthly_details_for_list_container() # Atualiza a lista mensal se um mês estiver selecionado
+        self._load_annual_pie_chart_data()
+        self._load_monthly_pie_chart_data() # Atualiza o gráfico mensal se um mês estiver selecionado
 if __name__ == "__main__":
     app = Dashboard(user_id="test_user_01") # Passa um user_id para teste
     app.mainloop()
