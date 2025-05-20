@@ -59,8 +59,16 @@ class Dashboard(customtkinter.CTk):
 
         self.logged_user_label = customtkinter.CTkLabel(user_year_frame, text="", font=FONTE_USUARIO_LOGADO, text_color="gray60")
         self.logged_user_label.pack(side="top", anchor="e", pady=(0,5))
+
+        # Link "Sair"
+        self.logout_label = customtkinter.CTkLabel(user_year_frame, text="Sair", font=(FONTE_FAMILIA, 10, "underline"), text_color="#8ab4f8", cursor="hand2")
+        self.logout_label.pack(side="top", anchor="e", pady=(0, 10))
+        self.logout_label.bind("<Button-1>", self.handle_logout)
+
         self.year_selector_frame = customtkinter.CTkFrame(self.header_frame, fg_color="transparent")
         self.year_selector_frame.pack(side="right", anchor="e")
+
+
 
         self.year_label = customtkinter.CTkLabel(self.year_selector_frame, text="Ano Referência:", font=(FONTE_FAMILIA, 12))
         self.year_label.pack(side="left", padx=(0, 5))
@@ -148,13 +156,6 @@ class Dashboard(customtkinter.CTk):
         cor_botao_cinza = "gray30"  # Um cinza mais escuro do customtkinter
         cor_botao_azul_hover = "#2196F3" # O mesmo azul usado anteriormente para hover
 
-        # Botão Voltar (agora na parte inferior com o mesmo estilo dos outros botões de ação)
-        self.back_button = customtkinter.CTkButton(buttons_inner_frame, text="< Voltar",
-                                                   command=self.go_back_to_main,
-                                                   font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
-                                                   fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover)
-        self.back_button.pack(side="left", padx=5)
-
         # Movendo "Cadastrar Despesa/Provento" para ser o primeiro botão da lista
         self.transaction_button = customtkinter.CTkButton(buttons_inner_frame, text="Cadastrar Despesa/Provento",
                                                          font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
@@ -212,15 +213,16 @@ class Dashboard(customtkinter.CTk):
         else:
             self.logged_user_label.configure(text="Nenhum usuário logado")
 
-    def go_back_to_main(self):
-        """Fecha a janela do Dashboard e sinaliza para a janela principal (Login) reaparecer."""
-        print("Botão Voltar clicado no Dashboard. Solicitando reinício da aplicação.")
+    def handle_logout(self, event=None):
+        """Fecha o Dashboard e sinaliza para Main.py reabrir a tela de Login."""
+        print("Link 'Sair' clicado. Solicitando retorno para a tela de Login.")
         self.request_restart_on_close = True
-        self.destroy() # Isso fará com que o mainloop() no Main.py continue.
+        self.destroy()
 
     # def year_changed_event(self, selected_year):
     #     print(f"Ano selecionado: {selected_year}")
     #     # Aqui você adicionaria a lógica para recarregar os dados do dashboard para o ano selecionado.
+
 
 if __name__ == "__main__":
     app = Dashboard(user_id="test_user_01") # Passa um user_id para teste
