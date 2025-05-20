@@ -27,6 +27,8 @@ class Dashboard(customtkinter.CTk):
         self.form_transacao_window = None # Referência para a janela de transação
         self.request_restart_on_close = False # Sinalizador para reinício
         # self.main_app_window = master # Removido, pois 'master' não é passado e a lógica de voltar já funciona
+        self.months_list = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+                            "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
         print(f"Dashboard iniciado para o usuário ID: {self.current_user_id}")
         
         # Configure window
@@ -40,33 +42,47 @@ class Dashboard(customtkinter.CTk):
         self.grid_columnconfigure(0, weight=1) # Title column spans the width
         self.grid_columnconfigure(1, weight=1) # Second column for pie chart container
         self.grid_rowconfigure(0, weight=0) # Title row
-        self.grid_rowconfigure(1, weight=0) # Top months container row
-        self.grid_rowconfigure(2, weight=1) # Row for list and pie chart (takes remaining space)
-        self.grid_rowconfigure(3, weight=0) # New row for action buttons and logo
+        self.grid_rowconfigure(1, weight=0) # Row for month buttons
+        self.grid_rowconfigure(2, weight=1) # Row for monthly expenses table (should expand)
+        self.grid_rowconfigure(3, weight=1) # Row for current list and pie chart (takes remaining space)
+        self.grid_rowconfigure(4, weight=0) # Row for "Resumo Anual" title
+        self.grid_rowconfigure(5, weight=1) # Row for annual summary list and pie chart (takes remaining space)
+        self.grid_rowconfigure(6, weight=0) # Row for action buttons and logo
 
 
         # --- Header Frame (Title and Year Selector) ---
         self.header_frame = customtkinter.CTkFrame(self, fg_color="transparent")
         self.header_frame.grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 10), sticky="ew")
 
-        self.title_label = customtkinter.CTkLabel(self.header_frame, text="Dashboard", font=FONTE_TITULO_GRANDE)
-        self.title_label.pack(side="left", anchor="w")
+         # Container para informações do usuário (à direita)
+        user_info_container = customtkinter.CTkFrame(self.header_frame, fg_color="transparent")
+        user_info_container.pack(side="right", anchor="ne", padx=(20,0)) # Adicionado padx para separar do conteúdo à esquerda
 
-        # Year Selector elements
-        # Frame para agrupar o nome do usuário e o seletor de ano
-        user_year_frame = customtkinter.CTkFrame(self.header_frame, fg_color="transparent")
-        user_year_frame.pack(side="right", anchor="ne") # Alinha à direita e ao topo do header_frame
 
-        self.logged_user_label = customtkinter.CTkLabel(user_year_frame, text="", font=FONTE_USUARIO_LOGADO, text_color="gray60")
+        self.logged_user_label = customtkinter.CTkLabel(user_info_container, text="", font=FONTE_USUARIO_LOGADO, text_color="gray60")
         self.logged_user_label.pack(side="top", anchor="e", pady=(0,5))
 
         # Link "Sair"
-        self.logout_label = customtkinter.CTkLabel(user_year_frame, text="Sair", font=(FONTE_FAMILIA, 10, "underline"), text_color="#8ab4f8", cursor="hand2")
+        self.logout_label = customtkinter.CTkLabel(user_info_container, text="Sair", font=(FONTE_FAMILIA, 10, "underline"), text_color="#8ab4f8", cursor="hand2")
         self.logout_label.pack(side="top", anchor="e", pady=(0, 10))
         self.logout_label.bind("<Button-1>", self.handle_logout)
+        self.load_logged_user_name() # Carrega o nome do usuário aqui
 
-        self.year_selector_frame = customtkinter.CTkFrame(self.header_frame, fg_color="transparent")
-        self.year_selector_frame.pack(side="right", anchor="e")
+
+        # Container para o título e o seletor de ano (ocupa o espaço restante à esquerda)
+        title_year_container = customtkinter.CTkFrame(self.header_frame, fg_color="transparent")
+        # fill="x" e expand=True para que o title_year_container ocupe o espaço horizontal restante.
+        # side="left" para que ele fique à esquerda do user_info_container.
+        title_year_container.pack(side="left", fill="x", expand=True)
+
+        self.title_label = customtkinter.CTkLabel(title_year_container, text="Dashboard", font=FONTE_TITULO_GRANDE)
+        # anchor="w" para alinhar o texto à esquerda dentro do seu espaço. padx para espaçamento.
+        self.title_label.pack(side="left", anchor="w", padx=(0, 30)) 
+
+        # Year Selector elements
+        self.year_selector_frame = customtkinter.CTkFrame(title_year_container, fg_color="transparent")
+        self.year_selector_frame.pack(side="left", anchor="w") # Alinha à esquerda, ao lado do título
+        
 
 
 
@@ -74,50 +90,78 @@ class Dashboard(customtkinter.CTk):
         self.year_label.pack(side="left", padx=(0, 5))
 
         current_year = datetime.datetime.now().year
-        # Gera uma lista de anos, por exemplo, 5 anos para trás e 2 para frente.
         year_options = [str(y) for y in range(current_year - 5, current_year + 3)]
         self.year_combobox = customtkinter.CTkComboBox(self.year_selector_frame, values=year_options, width=100, font=(FONTE_FAMILIA, 12), height=30)
         self.year_combobox.set(str(current_year)) # Define o ano atual como padrão
         self.year_combobox.pack(side="left")
-        # Adicionar comando ao combobox se precisar reagir à mudança de ano:
-        self.year_selector_frame.pack(in_=user_year_frame, side="bottom", anchor="e") # Adiciona o seletor de ano abaixo do nome do usuário
-        self.load_logged_user_name()
-        # self.year_combobox.configure(command=self.year_changed_event)
+        self.year_combobox.configure(command=self.year_changed_event)
+
 
         # --- Top Container for Months ---
         self.months_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
         self.months_container_frame.grid(row=1, column=0, columnspan=2, padx=20, pady=10, sticky="nsew") # Span across two columns
 
-        # Configure grid for months container (2 rows, 6 columns)
-        self.months_container_frame.grid_rowconfigure((0, 1), weight=1)
-        for i in range(6):
+        # Configura o grid dentro do months_container_frame para os botões dos meses
+        for i in range(2): # 2 linhas
+            self.months_container_frame.grid_rowconfigure(i, weight=1)
+        for i in range(6): # 6 colunas
             self.months_container_frame.grid_columnconfigure(i, weight=1)
 
-        # Add month placeholders
-        months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-                  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+        # Estilo dos botões (baseado nos botões de ação)
+        month_button_font = FONTE_NORMAL_BOLD # Usando uma fonte já definida, similar à dos botões de ação
+        # month_button_height = 35 # Removido para que a altura se ajuste à fonte
+        month_button_corner_radius = 17
+        month_button_fg_color = "gray30"
+        month_button_hover_color = "#2196F3"
+        for i, month_name in enumerate(self.months_list):
+            row = i // 6  # 0 para os primeiros 6 meses, 1 para os próximos 6
+            col = i % 6   # 0 a 5 para as colunas
 
-        for i, month in enumerate(months):
-            row = 0 if i < 6 else 1
-            col = i % 6
-            # Using a frame for each month allows adding more widgets inside later (e.g., a small chart, numbers)
-            month_frame = customtkinter.CTkFrame(self.months_container_frame, corner_radius=5, fg_color="#282828") # Um pouco mais claro que o COR_CONTAINER_INTERNO
-            month_frame.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
+            month_button = customtkinter.CTkButton(
+                self.months_container_frame,
+                text=month_name,
+                font=month_button_font,
+                corner_radius=month_button_corner_radius,
+                fg_color=month_button_fg_color,
+                hover_color=month_button_hover_color,
+                command=lambda m_idx=i: self.month_button_clicked(m_idx)
+                )
+            month_button.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
+        
 
-            month_label = customtkinter.CTkLabel(month_frame, text=month, font=FONTE_NORMAL_BOLD)
-            month_label.pack(padx=5, pady=5) # Center the month name
+        # --- Title for Annual Summary ---
+        self.annual_summary_title_label = customtkinter.CTkLabel(self, text="Resumo Anual", font=FONTE_TITULO_GRANDE)
+        self.annual_summary_title_label.grid(row=4, column=0, columnspan=2, pady=(20, 5), padx=20, sticky="w")
 
-            # Add placeholder for data within the month frame
-            data_placeholder = customtkinter.CTkLabel(month_frame, text="R$ 0,00\nData Here", font=FONTE_PEQUENA, text_color="gray50")
-            data_placeholder.pack(padx=5, pady=0)
+        # --- Left Container for Annual Summary List ---
+        self.annual_list_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
+        self.annual_list_container_frame.grid(row=5, column=0, padx=(20,10), pady=(10, 20), sticky="nsew")
+        # Placeholder for annual list (changed text_color for better visibility if needed)
+        annual_list_placeholder = customtkinter.CTkLabel(self.annual_list_container_frame, text="Lista Resumo Anual Placeholder", font=FONTE_TITULO_MEDIO, text_color="gray50")
+        annual_list_placeholder.pack(expand=True, fill="both", padx=20, pady=20)
 
+        # --- Right Container for Annual Summary Pie Chart ---
+        self.annual_pie_chart_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
+        self.annual_pie_chart_container_frame.grid(row=5, column=1, padx=(10,20), pady=(10, 20), sticky="nsew")
+        # Placeholder for annual pie chart (changed text_color for better visibility if needed)
+        annual_pie_placeholder = customtkinter.CTkLabel(self.annual_pie_chart_container_frame, text="Gráfico Pizza Anual Placeholder", font=FONTE_TITULO_MEDIO, text_color="gray50")
+        annual_pie_placeholder.pack(expand=True, fill="both", padx=20, pady=20)
+
+        # --- Bottom Container for Action Buttons and Logo ---
+        self.actions_container_frame = customtkinter.CTkFrame(self, corner_radius=0, fg_color="transparent") # Sem cantos e transparente
+        # Aumentado o pady inferior para criar mais espaço abaixo dos botões.
+        self.actions_container_frame.grid(row=6, column=0, columnspan=2, padx=0, pady=(10,20), sticky="nsew") # Movido para row 6
+
+        # Frame interno para centralizar os botões
+        buttons_inner_frame = customtkinter.CTkFrame(self.actions_container_frame, fg_color="transparent")
+        buttons_inner_frame.pack(expand=True, anchor="center", pady=10) # Centraliza o frame dos botões
 
         # --- Left Container for List Items ---
         self.list_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
-        self.list_container_frame.grid(row=2, column=0, padx=(20,10), pady=(10, 20), sticky="nsew") # Occupies the first column in row 2
+        self.list_container_frame.grid(row=3, column=0, padx=(20,10), pady=(10, 20), sticky="nsew")
 
         # Add list items (example)
-        list_items_title = customtkinter.CTkLabel(self.list_container_frame, text="Categorias:", font=FONTE_TITULO_MEDIO)
+        list_items_title = customtkinter.CTkLabel(self.list_container_frame, text="Categorias Placeholder:", font=FONTE_TITULO_MEDIO)
         list_items_title.pack(padx=10, pady=(10, 5), anchor="w") # Anchor west
 
         list_items = ["Cat1 R$ 0,00", "Cat2 R$ 0,00", "Cat3 R$ 0,00", "Cat4 R$ 0,00"]
@@ -126,23 +170,6 @@ class Dashboard(customtkinter.CTk):
             item_label.pack(padx=20, pady=2, anchor="w") # Anchor west, add some padding
 
 
-        # --- Bottom Container for Pie Chart ---
-        self.pie_chart_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
-        self.pie_chart_container_frame.grid(row=2, column=1, padx=(10,20), pady=(10, 20), sticky="nsew") # Occupies the second column in row 2
-
-        # Placeholder for the pie chart
-        pie_chart_placeholder_label = customtkinter.CTkLabel(self.pie_chart_container_frame, text="Gráfico de Pizza Placeholder", font=FONTE_TITULO_MEDIO)
-        pie_chart_placeholder_label.pack(expand=True, fill="both", padx=20, pady=20) # Center placeholder text
-
-        # --- Bottom Container for Action Buttons and Logo ---
-        self.actions_container_frame = customtkinter.CTkFrame(self, corner_radius=0, fg_color="transparent") # Sem cantos e transparente
-        # Aumentado o pady inferior para criar mais espaço abaixo dos botões.
-        self.actions_container_frame.grid(row=3, column=0, columnspan=2, padx=0, pady=(10,20), sticky="nsew")
-
-        # Frame interno para centralizar os botões
-        buttons_inner_frame = customtkinter.CTkFrame(self.actions_container_frame, fg_color="transparent")
-        buttons_inner_frame.pack(expand=True, anchor="center", pady=10) # Centraliza o frame dos botões
-
         # Configure grid for actions container (1 row, many columns for flexibility or use pack)
         # Usaremos pack para os botões e place para o logo
 
@@ -150,6 +177,15 @@ class Dashboard(customtkinter.CTk):
         button_font = FONTE_BOTAO_ACAO
         button_width = 150
         button_height = 35 # Altura padrão dos botões
+        button_corner_radius = 17 # Para cantos bem arredondados, ~metade da altura
+
+        # --- Bottom Container for Pie Chart ---
+        self.pie_chart_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
+        self.pie_chart_container_frame.grid(row=3, column=1, padx=(10,20), pady=(10, 20), sticky="nsew")
+
+        # Placeholder for the pie chart (moved here)
+        pie_chart_placeholder_label = customtkinter.CTkLabel(self.pie_chart_container_frame, text="Gráfico de Pizza Placeholder", font=FONTE_TITULO_MEDIO, text_color="gray50")
+        pie_chart_placeholder_label.pack(expand=True, fill="both", padx=20, pady=20) # Center placeholder text
         button_corner_radius = 17 # Para cantos bem arredondados, ~metade da altura
         
         # Define as cores para os botões
@@ -219,9 +255,14 @@ class Dashboard(customtkinter.CTk):
         self.request_restart_on_close = True
         self.destroy()
 
-    # def year_changed_event(self, selected_year):
-    #     print(f"Ano selecionado: {selected_year}")
-    #     # Aqui você adicionaria a lógica para recarregar os dados do dashboard para o ano selecionado.
+    def year_changed_event(self, selected_year):
+        print(f"Ano selecionado: {selected_year}")
+        pass # Placeholder, nenhuma ação complexa por enquanto
+
+    def month_button_clicked(self, month_index):
+        month_name = self.months_list[month_index]
+        print(f"Botão do mês '{month_name}' (índice {month_index}) clicado.")
+        pass # Placeholder, nenhuma ação complexa por enquanto
 
 
 if __name__ == "__main__":

@@ -176,9 +176,15 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
         payment_date_input = self.payment_date_entry.get().strip()
         status = self.status_var.get()
 
-        if not description or selected_category_name in ["Selecione a Categoria", "Carregando...", "Nenhuma categoria cadastrada"] or not value_str or not due_date_input:
-            print("Descrição, Categoria, Valor e Data Prevista são obrigatórios.") # TODO: Mostrar alerta na GUI
-            # Adicionar CTkMessagebox aqui seria ideal
+        # Validações básicas
+        if not description:
+            print("Descrição é obrigatória.") # TODO: Mostrar alerta na GUI
+            return
+        if selected_category_name in ["Selecione a Categoria", "Carregando...", "Nenhuma categoria cadastrada"]:
+            print("Categoria é obrigatória.") # TODO: Mostrar alerta na GUI
+            return
+        if not value_str:
+            print("Valor é obrigatório.") # TODO: Mostrar alerta na GUI
             return
 
         try:
@@ -187,17 +193,36 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
             print("Valor inválido. Use apenas números e ponto/vírgula.") # TODO: Mostrar alerta na GUI
             return
         
-        # Converte datas de DD/MM/AAAA para YYYY-MM-DD para o banco
-        try:
-            due_date_db = datetime.datetime.strptime(due_date_input, "%d/%m/%Y").strftime("%Y-%m-%d")
-            payment_date_db = None
-            if status == "Pago" and payment_date_input:
-                payment_date_db = datetime.datetime.strptime(payment_date_input, "%d/%m/%Y").strftime("%Y-%m-%d")
-            elif status == "Pago" and not payment_date_input: # Se está pago mas sem data, não prosseguir
-                print("Se o status é 'Pago', a Data de Pagamento é obrigatória.") # TODO: Alerta GUI
+        due_date_db = None
+        payment_date_db = None
+
+        if status == "Em Aberto":
+            if not due_date_input:
+                print("Data Prevista é obrigatória para status 'Em Aberto'.") # TODO: Mostrar alerta na GUI
                 return
-        except ValueError:
-            print("Formato de data inválido. Use DD/MM/AAAA.") # TODO: Alerta GUI
+            try:
+                due_date_db = datetime.datetime.strptime(due_date_input, "%d/%m/%Y").strftime("%Y-%m-%d")
+            except ValueError:
+                print("Formato de Data Prevista inválido. Use DD/MM/AAAA.") # TODO: Mostrar alerta na GUI
+                return
+        elif status == "Pago":
+            if not payment_date_input:
+                print("Data de Pagamento é obrigatória para status 'Pago'.") # TODO: Mostrar alerta na GUI
+                return
+            try:
+                payment_date_db = datetime.datetime.strptime(payment_date_input, "%d/%m/%Y").strftime("%Y-%m-%d")
+                # Se status é Pago, e due_date_input está vazio (porque o campo foi escondido pela UI),
+                # definimos due_date_db como payment_date_db.
+                # Se due_date_input não estiver vazio (cenário menos provável com a UI atual), tentamos convertê-lo.
+                if due_date_input: # Caso o campo de data prevista esteja visível e preenchido
+                    due_date_db = datetime.datetime.strptime(due_date_input, "%d/%m/%Y").strftime("%Y-%m-%d")
+                else:
+                    due_date_db = payment_date_db # Data prevista será a mesma da data de pagamento
+            except ValueError:
+                print("Formato de Data de Pagamento (ou Data Prevista, se visível) inválido. Use DD/MM/AAAA.") # TODO: Mostrar alerta na GUI
+                return
+        else: # Status desconhecido
+            print(f"Status desconhecido: {status}")
             return
 
         all_categories = Database.get_categories_by_user(self.current_user_id)

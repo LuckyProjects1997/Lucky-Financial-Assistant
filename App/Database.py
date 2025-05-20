@@ -209,6 +209,25 @@ def delete_category(category_id):
     finally:
         conn.close()
 
+def delete_all_users():
+    """Deleta todos os usuários da tabela users."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # Delete all rows from the users table
+        cursor.execute("DELETE FROM users")
+        conn.commit()
+        count = cursor.rowcount
+        print(f"{count} usuários deletados com sucesso.")
+        return True
+    except sqlite3.Error as e:
+        print(f"Erro ao deletar todos os usuários: {e}")
+        # Pode ser necessário deletar categorias e transações primeiro se houver dependências
+        print("Se houver categorias ou transações associadas a usuários, a exclusão pode falhar devido a chaves estrangeiras.")
+        print("Considere deletar dados relacionados (categorias, transações) primeiro, se necessário.")
+        return False
+    finally:
+        conn.close()
 def delete_user_by_name(name):
     """Exclui um usuário do banco de dados pelo seu nome."""
     conn = get_db_connection()
@@ -228,11 +247,75 @@ def delete_user_by_name(name):
     finally:
         conn.close()
 
+def get_monthly_expenses_by_category_for_year(user_id, year):
+    """
+    Busca a soma das despesas mensais por categoria para um usuário e ano específicos.
+    Retorna um dicionário onde as chaves são nomes de categorias e os valores são listas
+    de 12 totais mensais (Janeiro a Dezembro).
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    query = """
+        SELECT
+            c.name AS category_name,
+            CAST(SUBSTR(t.due_date, 6, 2) AS INTEGER) AS month, -- Converte mês para INTEGER para ordenação
+            SUM(t.value) AS monthly_total
+        FROM
+            transactions t
+        JOIN
+            categories c ON t.category_id = c.id
+        WHERE
+            t.user_id = ? AND
+            SUBSTR(t.due_date, 1, 4) = ? AND
+            c.type = 'Despesa'
+        GROUP BY
+            c.id, c.name, month
+        ORDER BY
+            c.name, month;
+    """
+    cursor.execute(query, (user_id, str(year)))
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
+def get_category_summary_for_month(user_id, year, month_number):
+    """
+    Busca a soma das transações (despesas e proventos) por categoria para um usuário, ano e mês específicos.
+    O mês é filtrado pela due_date.
+    Retorna uma lista de dicionários: {'category_name': str, 'category_type': str, 'category_color': str, 'total_value': float}
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    query = """
+        SELECT
+            c.name AS category_name,
+            c.type AS category_type,
+            c.color AS category_color,
+            SUM(t.value) AS total_value
+        FROM
+            transactions t
+        JOIN
+            categories c ON t.category_id = c.id
+        WHERE
+            t.user_id = ? AND
+            SUBSTR(t.due_date, 1, 4) = ? AND -- Ano
+            CAST(SUBSTR(t.due_date, 6, 2) AS INTEGER) = ? -- Mês
+        GROUP BY
+            c.id, c.name, c.type, c.color
+        ORDER BY
+            c.name;
+    """
+    cursor.execute(query, (user_id, str(year), month_number))
+    results = cursor.fetchall()
+    conn.close()
+    return results
+
 # Bloco para inicializar o banco de dados quando este script for executado diretamente (opcional, para teste).
 if __name__ == "__main__":
-    create_tables() # Garante que as tabelas existam.
-    # Adiciona o usuário Lucas como exemplo inicial.
-    # add_user("01", "Lucas") # Comentado para não adicionar automaticamente ao rodar este script
-    add_category("cat001", "01", "Alimentação", "Despesa", "#FF0000") # Exemplo de categoria
-
-    print("Usuários cadastrados:", get_all_users())
+    create_tables() # Garante que as tabelas existam
+    
+    # --- Para remover todos os usuários, descomente a linha abaixo e execute este arquivo (Database.py) ---
+    # print("Deletando todos os usuários...")
+    # delete_all_users()
+    # print("Verificando usuários após exclusão:", get_all_users())
+    # ------------------------------------------------------------------------------------------------------

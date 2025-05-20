@@ -140,7 +140,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         login_elements_layout.addWidget(user_input_frame) # Adiciona o frame de input ao layout vertical.
 
         # Adiciona um espaçamento vertical entre o frame de input do usuário e o botão Iniciar.
-        login_elements_layout.addSpacing(30) # Você pode ajustar o valor '30' para mais ou menos espaço.
+        login_elements_layout.addSpacing(15) # Ajustado para aproximar o botão Iniciar do campo de usuário.
 
         # Botão "INICIAR".
         self.button_iniciar = QPushButton("INICIAR", login_container_widget) # Cria um QPushButton.
@@ -291,7 +291,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         
         users = Database.get_all_users() # Busca todos os usuários do banco.
         if not users:
-            self.combo_usuario.addItem("Nenhum usuário cadastrado", None) # Adiciona item placeholder se não houver usuários.
+            self.combo_usuario.addItem(" ", None) # Adiciona item placeholder se não houver usuários.
         else:
             self.combo_usuario.addItem("     Selecionar", None) # Adiciona um item inicial "Selecione".
             for user in users:
