@@ -9,6 +9,8 @@ from PySide6.QtCore import Qt, QSize # Para alinhamentos, tamanhos, etc.
 
 # Importa a classe Dashboard do arquivo Dashboard.py
 from Dashboard import Dashboard
+# Importa a janela de formulário de cadastro
+from form_cadastro import FormCadastroWindow
 # Importa as funções do nosso novo módulo de banco de dados.
 import Database
 
@@ -37,11 +39,10 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         self.original_imagem_fundo = None # Atributo para armazenar a imagem de fundo original não escalada
 
         self.dashboard_window = None # Referência para a janela do dashboard
+        self.form_cadastro_win_ref = None # Referência para a janela de cadastro
 
         # Inicializa o banco de dados e as tabelas.
         Database.create_tables()
-        # Adiciona o usuário padrão "Lucas" se ele não existir.
-        Database.add_user("01", "Lucas")
         self.init_ui() # Chama o método para inicializar a interface do usuário.
 
     def init_ui(self):
@@ -71,7 +72,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
 
         # Adiciona um espaçador flexível no topo para empurrar o container de login para baixo.
         # A proporção de 6:1 (aproximadamente) com o stretch abaixo deve posicionar o conteúdo perto de 720px.
-        main_layout.addStretch(6) 
+        main_layout.addStretch(7) # Aumentado de 6 para 7 para mover um pouco mais para baixo
 
         # Container para os elementos de login (para aplicar margens e centralização).
         # Este QWidget não terá um layout próprio, mas será posicionado pelo main_layout.
@@ -162,8 +163,24 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         # Conecta o sinal clicked do botão ao método abrir_dashboard.
         self.button_iniciar.clicked.connect(self.abrir_dashboard)
         login_elements_layout.addWidget(self.button_iniciar, alignment=Qt.AlignmentFlag.AlignCenter) # Adiciona ao layout vertical, centralizado.
-        # Removemos o stretch interno do login_elements_layout para que o container se ajuste ao conteúdo.
 
+        # Link "Cadastrar"
+        self.label_cadastrar = QLabel("Cadastrar")
+        self.label_cadastrar.setFont(QFont(self.FONTE_FAMILIA, 11)) # Fonte um pouco menor
+        self.label_cadastrar.setStyleSheet("""
+            QLabel {
+                color: #8ab4f8; /* Azul claro, similar a links */
+                text-decoration: none; /* Sem sublinhado por padrão */
+            }
+            QLabel:hover {
+                text-decoration: underline; /* Sublinhado ao passar o mouse */
+            }
+        """)
+        self.label_cadastrar.setCursor(Qt.PointingHandCursor) # Muda o cursor para mãozinha
+        self.label_cadastrar.mousePressEvent = self.abrir_formulario_cadastro_usuario # Conecta o clique
+        login_elements_layout.addWidget(self.label_cadastrar, alignment=Qt.AlignmentFlag.AlignCenter)
+        login_elements_layout.addSpacing(10) # Pequeno espaço abaixo do link
+        # Removemos o stretch interno do login_elements_layout para que o container se ajuste ao conteúdo.
         main_layout.addWidget(login_container_widget) # Adiciona o container de login ao layout principal da janela.
         main_layout.addStretch(1) # Adiciona um espaçador flexível menor abaixo do container de login.
 
@@ -216,6 +233,44 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         # fecha a aplicação de login (PySide6).
         self.close() # Fecha a janela de login (e, por consequência, a aplicação PySide6 se for a última janela).
 
+    def abrir_formulario_cadastro_usuario(self, event=None): # event é passado por mousePressEvent
+        """Abre o formulário de cadastro de usuário."""
+        self.hide() # Esconde a janela de login
+        temp_ctk_root = None # Inicializa para o bloco finally
+
+        try:
+            print("Abrindo formulário de cadastro...")
+            import customtkinter # Importa aqui para evitar dependência no topo se não for usado
+            
+            temp_ctk_root = customtkinter.CTk() # Cria um root CTk temporário
+            temp_ctk_root.withdraw() # Esconde o root temporário
+
+            # Função a ser chamada quando o formulário de cadastro for fechado
+            def on_form_closed_callback():
+                print("Formulário de cadastro fechado via callback.")
+                if temp_ctk_root and temp_ctk_root.winfo_exists():
+                    temp_ctk_root.destroy() # Destrói o root temporário, terminando seu mainloop
+
+            self.form_cadastro_win_ref = FormCadastroWindow(master=temp_ctk_root)
+            self.form_cadastro_win_ref.on_close_callback = on_form_closed_callback # Define o callback
+            # Também lida com o fechamento pelo botão [X] da janela
+            self.form_cadastro_win_ref.protocol("WM_DELETE_WINDOW", on_form_closed_callback)
+            
+            temp_ctk_root.mainloop() # Inicia o loop de eventos do CTk para o formulário
+
+        except ImportError:
+            print("CustomTkinter não está instalado. Não é possível abrir o formulário de cadastro.")
+            QMessageBox.critical(self, "Erro de Importação", "CustomTkinter não está instalado.")
+        except Exception as e:
+            print(f"Erro ao tentar abrir o formulário de cadastro: {e}")
+            QMessageBox.critical(self, "Erro", f"Não foi possível abrir o formulário de cadastro:\n{e}")
+        finally:
+            # Garante que o root temporário seja destruído se ainda existir
+            if temp_ctk_root and temp_ctk_root.winfo_exists():
+                temp_ctk_root.destroy()
+            self.show() # Mostra a janela de login novamente
+            self.load_users_into_combobox() # Recarrega os usuários, caso um novo tenha sido adicionado
+
     def load_users_into_combobox(self):
         """Busca usuários do banco de dados e os carrega na QComboBox."""
         print("Carregando usuários na ComboBox...")
@@ -225,7 +280,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         if not users:
             self.combo_usuario.addItem("Nenhum usuário cadastrado", None) # Adiciona item placeholder se não houver usuários.
         else:
-            self.combo_usuario.addItem("Selecionar", None) # Adiciona um item inicial "Selecione".
+            self.combo_usuario.addItem("     Selecionar", None) # Adiciona um item inicial "Selecione".
             for user in users:
                 # Adiciona o nome do usuário como texto e o ID como dado associado.
                 self.combo_usuario.addItem(user["name"], user["id"])

@@ -46,6 +46,28 @@ def create_tables():
             FOREIGN KEY (user_id) REFERENCES users (id)
         )
     """)
+
+    # Cria a tabela 'transactions' se ela não existir.
+    # id: Identificador único da transação (TEXTO, chave primária).
+    # user_id: ID do usuário ao qual esta transação pertence (TEXTO, chave estrangeira para users.id).
+    # category_id: ID da categoria associada (TEXTO, chave estrangeira para categories.id).
+    # description: Descrição da transação (TEXTO, não pode ser nulo).
+    # value: Valor da transação (REAL, para números decimais).
+    # due_date: Data prevista (TEXTO, formato YYYY-MM-DD).
+    # payment_date: Data de pagamento (TEXTO, formato YYYY-MM-DD, pode ser nulo).
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS transactions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            category_id TEXT NOT NULL,
+            description TEXT NOT NULL,
+            value REAL NOT NULL,
+            due_date TEXT NOT NULL,
+            payment_date TEXT,
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            FOREIGN KEY (category_id) REFERENCES categories (id)
+        )
+    """)
     # Adicionar outras tabelas aqui no futuro (ex: categories, transactions)
 
     conn.commit() # Salva as alterações no banco de dados.
@@ -63,10 +85,13 @@ def add_user(user_id, name):
         conn.commit()
         if cursor.rowcount > 0:
             print(f"Usuário '{name}' (ID: {user_id}) adicionado com sucesso.")
+            return True # Retorna True em caso de sucesso
         else:
             print(f"Usuário com ID '{user_id}' já existe ou não pôde ser adicionado.")
+            return False # Retorna False se o usuário já existe ou não foi adicionado
     except sqlite3.Error as e:
         print(f"Erro ao adicionar usuário: {e}")
+        return False # Retorna False em caso de erro
     finally:
         conn.close()
 
@@ -79,6 +104,16 @@ def get_all_users():
     conn.close()
     # Converte os objetos Row para dicionários para facilitar o uso.
     return [{"id": user["id"], "name": user["name"]} for user in users]
+
+def get_user_name_by_id(user_id):
+    """Busca e retorna o nome de um usuário pelo seu ID."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM users WHERE id = ?", (user_id,))
+    user = cursor.fetchone() # Retorna uma única linha
+    conn.close()
+    return user["name"] if user else None
+
 def add_category(category_id, user_id, name, category_type, color):
     """Adiciona uma nova categoria ao banco de dados se o ID não existir."""
     conn = get_db_connection()
@@ -99,11 +134,105 @@ def add_category(category_id, user_id, name, category_type, color):
     finally:
         conn.close()
 
+def get_categories_by_user(user_id):
+    """Busca e retorna todas as categorias cadastradas para um usuário específico."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, user_id, name, type, color FROM categories WHERE user_id = ? ORDER BY name ASC", (user_id,))
+    categories = cursor.fetchall()
+    conn.close()
+    return [{"id": cat["id"], "user_id": cat["user_id"], "name": cat["name"], "type": cat["type"], "color": cat["color"]} for cat in categories]
+def update_category(category_id, name, category_type, color):
+    """Atualiza uma categoria existente no banco de dados."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # Atualiza o nome, tipo e cor da categoria com o ID especificado.
+        cursor.execute("""
+            UPDATE categories
+            SET name = ?, type = ?, color = ?
+            WHERE id = ?
+        """, (name, category_type, color, category_id))
+        conn.commit()
+        if cursor.rowcount > 0:
+            print(f"Categoria com ID '{category_id}' atualizada com sucesso.")
+            return True
+        else:
+            print(f"Nenhuma categoria encontrada com ID '{category_id}' para atualizar.")
+            return False
+    except sqlite3.Error as e:
+        print(f"Erro ao atualizar categoria: {e}")
+        return False
+    finally:
+        conn.close()
+
+def add_transaction(transaction_id, user_id, category_id, description, value, due_date, payment_date=None):
+    """Adiciona uma nova transação ao banco de dados."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (transaction_id, user_id, category_id, description, value, due_date, payment_date))
+        conn.commit()
+        if cursor.rowcount > 0:
+            print(f"Transação '{description}' (ID: {transaction_id}) adicionada com sucesso para o usuário ID: {user_id}.")
+            return True
+        else:
+            print(f"Transação com ID '{transaction_id}' já existe ou não pôde ser adicionada.")
+            return False
+    except sqlite3.Error as e:
+        print(f"Erro ao adicionar transação: {e}")
+        return False
+    except Exception as e:
+        print(f"Erro inesperado ao adicionar transação: {e}")
+        return False
+    finally:
+        conn.close()
+def delete_category(category_id):
+    """Exclui uma categoria do banco de dados pelo seu ID."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+        conn.commit()
+        if cursor.rowcount > 0:
+            print(f"Categoria com ID '{category_id}' excluída com sucesso.")
+            return True
+        else:
+            print(f"Nenhuma categoria encontrada com ID '{category_id}' para excluir.")
+            return False
+    except sqlite3.Error as e:
+        print(f"Erro ao excluir categoria: {e}")
+        return False
+    finally:
+        conn.close()
+
+def delete_user_by_name(name):
+    """Exclui um usuário do banco de dados pelo seu nome."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM users WHERE name = ?", (name,))
+        conn.commit()
+        if cursor.rowcount > 0:
+            print(f"Usuário '{name}' excluído com sucesso.")
+            return True
+        else:
+            print(f"Nenhum usuário encontrado com o nome '{name}' para excluir.")
+            return False
+    except sqlite3.Error as e:
+        print(f"Erro ao excluir usuário '{name}': {e}")
+        return False
+    finally:
+        conn.close()
+
 # Bloco para inicializar o banco de dados quando este script for executado diretamente (opcional, para teste).
 if __name__ == "__main__":
     create_tables() # Garante que as tabelas existam.
     # Adiciona o usuário Lucas como exemplo inicial.
-    add_user("01", "Lucas")
+    # add_user("01", "Lucas") # Comentado para não adicionar automaticamente ao rodar este script
     add_category("cat001", "01", "Alimentação", "Despesa", "#FF0000") # Exemplo de categoria
 
     print("Usuários cadastrados:", get_all_users())

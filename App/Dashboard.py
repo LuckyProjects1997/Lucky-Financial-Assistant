@@ -4,9 +4,9 @@ from PIL import Image # Adicionado para carregar a imagem do logo
 import datetime # Para obter o ano atual 
 from form_cadastro import FormCadastroWindow # Importa a nova janela de formulário de cadastro
 
-
+from form_transacao import FormTransacaoWindow # Importa a nova janela de formulário de transação
 # Importa as funções do nosso novo módulo de banco de dados (se necessário no futuro para o Dashboard).
-# import database # Descomente se o Dashboard precisar interagir diretamente com o banco.
+import Database # Usando 'Database' com D maiúsculo conforme seu Main.py
 
 # Definições de fonte padrão para o Dashboard
 FONTE_FAMILIA = "Segoe UI"
@@ -15,6 +15,7 @@ FONTE_TITULO_MEDIO = (FONTE_FAMILIA, 16, "bold")
 FONTE_NORMAL_BOLD = (FONTE_FAMILIA, 13, "bold")
 FONTE_NORMAL = (FONTE_FAMILIA, 13)
 FONTE_PEQUENA = (FONTE_FAMILIA, 11)
+FONTE_USUARIO_LOGADO = (FONTE_FAMILIA, 10, "italic")
 FONTE_BOTAO_ACAO = (FONTE_FAMILIA, 13, "bold")
 
 COR_CONTAINER_INTERNO = "#222222" # Cinza mais escuro para containers internos, próximo ao fundo da janela
@@ -23,6 +24,8 @@ class Dashboard(customtkinter.CTk):
         super().__init__()
         self.current_user_id = user_id # Armazena o ID do usuário.
         self.form_cadastro_window = None # Referência para a janela de cadastro
+        self.form_transacao_window = None # Referência para a janela de transação
+        # self.main_app_window = master # Removido, pois 'master' não é passado e a lógica de voltar já funciona
         print(f"Dashboard iniciado para o usuário ID: {self.current_user_id}")
         
         # Configure window
@@ -45,10 +48,24 @@ class Dashboard(customtkinter.CTk):
         self.header_frame = customtkinter.CTkFrame(self, fg_color="transparent")
         self.header_frame.grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 10), sticky="ew")
 
+        # Botão Voltar
+        self.back_button = customtkinter.CTkButton(self.header_frame, text="< Voltar",
+                                                   command=self.go_back_to_main,
+                                                   width=80, height=28,
+                                                   font=(FONTE_FAMILIA, 12, "bold"),
+                                                   corner_radius=14)
+        self.back_button.pack(side="left", anchor="nw", padx=(0, 20))
+
         self.title_label = customtkinter.CTkLabel(self.header_frame, text="Dashboard", font=FONTE_TITULO_GRANDE)
         self.title_label.pack(side="left", anchor="w")
 
         # Year Selector elements
+        # Frame para agrupar o nome do usuário e o seletor de ano
+        user_year_frame = customtkinter.CTkFrame(self.header_frame, fg_color="transparent")
+        user_year_frame.pack(side="right", anchor="ne") # Alinha à direita e ao topo do header_frame
+
+        self.logged_user_label = customtkinter.CTkLabel(user_year_frame, text="", font=FONTE_USUARIO_LOGADO, text_color="gray60")
+        self.logged_user_label.pack(side="top", anchor="e", pady=(0,5))
         self.year_selector_frame = customtkinter.CTkFrame(self.header_frame, fg_color="transparent")
         self.year_selector_frame.pack(side="right", anchor="e")
 
@@ -62,6 +79,8 @@ class Dashboard(customtkinter.CTk):
         self.year_combobox.set(str(current_year)) # Define o ano atual como padrão
         self.year_combobox.pack(side="left")
         # Adicionar comando ao combobox se precisar reagir à mudança de ano:
+        self.year_selector_frame.pack(in_=user_year_frame, side="bottom", anchor="e") # Adiciona o seletor de ano abaixo do nome do usuário
+        self.load_logged_user_name()
         # self.year_combobox.configure(command=self.year_changed_event)
 
         # --- Top Container for Months ---
@@ -141,15 +160,12 @@ class Dashboard(customtkinter.CTk):
                                                       fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover)
         self.details_button.pack(side="left", padx=5) # Removido pady daqui, já está no buttons_inner_frame
 
-        self.categories_button = customtkinter.CTkButton(buttons_inner_frame, text="Categorias",
+        self.transaction_button = customtkinter.CTkButton(buttons_inner_frame, text="Cadastrar Despesa/Provento",
                                                          font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
-                                                         fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover)
-        self.categories_button.pack(side="left", padx=5)
+                                                         fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover,
+                                                         command=lambda: self.open_form_transacao("Despesa")) # Abre como Despesa por padrão
+        self.transaction_button.pack(side="left", padx=5)
 
-        self.new_expense_button = customtkinter.CTkButton(buttons_inner_frame, text="Nova Despesa",
-                                                          font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
-                                                          fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover)
-        self.new_expense_button.pack(side="left", padx=5)
 
         self.new_category_button = customtkinter.CTkButton(buttons_inner_frame, text="Nova Categoria",
                                                            font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
@@ -178,6 +194,30 @@ class Dashboard(customtkinter.CTk):
             self.form_cadastro_window.focus() # Traz a nova janela para o foco
         else:
             self.form_cadastro_window.focus() # Se a janela já existe, apenas a traz para o foco
+
+    def open_form_transacao(self, tipo_transacao):
+        if self.form_transacao_window is None or not self.form_transacao_window.winfo_exists():
+            self.form_transacao_window = FormTransacaoWindow(master=self, current_user_id=self.current_user_id, tipo_transacao=tipo_transacao)
+            self.form_transacao_window.focus()
+        else:
+            self.form_transacao_window.focus()
+
+    def load_logged_user_name(self):
+        if self.current_user_id:
+            user_name = Database.get_user_name_by_id(self.current_user_id)
+            if user_name:
+                self.logged_user_label.configure(text=f"Usuário: {user_name}")
+            else:
+                self.logged_user_label.configure(text="Usuário: Desconhecido")
+        else:
+            self.logged_user_label.configure(text="Nenhum usuário logado")
+
+    def go_back_to_main(self):
+        """Fecha a janela do Dashboard e sinaliza para a janela principal (Login) reaparecer."""
+        # A lógica de reexibir a LoginWindow já está no Main.py, no método abrir_dashboard,
+        # após o self.dashboard_window.mainloop() terminar.
+        # Apenas precisamos fechar esta janela do Dashboard.
+        self.destroy() # Isso fará com que o mainloop() no Main.py continue.
 
     # def year_changed_event(self, selected_year):
     #     print(f"Ano selecionado: {selected_year}")
