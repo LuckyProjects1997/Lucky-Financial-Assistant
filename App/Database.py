@@ -29,6 +29,23 @@ def create_tables():
             name TEXT NOT NULL
         )
     """)
+    
+    # Cria a tabela 'categories' se ela não existir.
+    # id: Identificador único da categoria (TEXTO, chave primária).
+    # user_id: ID do usuário ao qual esta categoria pertence (TEXTO, chave estrangeira para users.id).
+    # name: Nome da categoria (TEXTO, não pode ser nulo).
+    # type: Tipo da categoria ('Despesa' ou 'Provento') (TEXTO, não pode ser nulo).
+    # color: Cor associada à categoria (TEXTO, formato hexadecimal, ex: '#FF0000').
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS categories (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            color TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    """)
     # Adicionar outras tabelas aqui no futuro (ex: categories, transactions)
 
     conn.commit() # Salva as alterações no banco de dados.
@@ -62,11 +79,31 @@ def get_all_users():
     conn.close()
     # Converte os objetos Row para dicionários para facilitar o uso.
     return [{"id": user["id"], "name": user["name"]} for user in users]
+def add_category(category_id, user_id, name, category_type, color):
+    """Adiciona uma nova categoria ao banco de dados se o ID não existir."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT OR IGNORE INTO categories (id, user_id, name, type, color) VALUES (?, ?, ?, ?, ?)",
+                       (category_id, user_id, name, category_type, color))
+        conn.commit()
+        if cursor.rowcount > 0:
+            print(f"Categoria '{name}' (ID: {category_id}) adicionada com sucesso para o usuário ID: {user_id}.")
+            return True
+        else:
+            print(f"Categoria com ID '{category_id}' já existe ou não pôde ser adicionada.")
+            return False
+    except sqlite3.Error as e:
+        print(f"Erro ao adicionar categoria: {e}")
+        return False
+    finally:
+        conn.close()
 
 # Bloco para inicializar o banco de dados quando este script for executado diretamente (opcional, para teste).
 if __name__ == "__main__":
     create_tables() # Garante que as tabelas existam.
     # Adiciona o usuário Lucas como exemplo inicial.
     add_user("01", "Lucas")
-    # add_user("02", "Maria") # Linha para adicionar Maria foi removida/comentada
+    add_category("cat001", "01", "Alimentação", "Despesa", "#FF0000") # Exemplo de categoria
+
     print("Usuários cadastrados:", get_all_users())

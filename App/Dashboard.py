@@ -1,20 +1,35 @@
 import customtkinter
 import tkinter as tk
 from PIL import Image # Adicionado para carregar a imagem do logo
-import datetime # Para obter o ano atual
+import datetime # Para obter o ano atual 
+from form_cadastro import FormCadastroWindow # Importa a nova janela de formulário de cadastro
+
 
 # Importa as funções do nosso novo módulo de banco de dados (se necessário no futuro para o Dashboard).
 # import database # Descomente se o Dashboard precisar interagir diretamente com o banco.
 
+# Definições de fonte padrão para o Dashboard
+FONTE_FAMILIA = "Segoe UI"
+FONTE_TITULO_GRANDE = (FONTE_FAMILIA, 24, "bold")
+FONTE_TITULO_MEDIO = (FONTE_FAMILIA, 16, "bold")
+FONTE_NORMAL_BOLD = (FONTE_FAMILIA, 13, "bold")
+FONTE_NORMAL = (FONTE_FAMILIA, 13)
+FONTE_PEQUENA = (FONTE_FAMILIA, 11)
+FONTE_BOTAO_ACAO = (FONTE_FAMILIA, 13, "bold")
+
+COR_CONTAINER_INTERNO = "#222222" # Cinza mais escuro para containers internos, próximo ao fundo da janela
 class Dashboard(customtkinter.CTk):
     def __init__(self, user_id=None): # Adiciona user_id como parâmetro opcional.
         super().__init__()
         self.current_user_id = user_id # Armazena o ID do usuário.
+        self.form_cadastro_window = None # Referência para a janela de cadastro
         print(f"Dashboard iniciado para o usuário ID: {self.current_user_id}")
+        
         # Configure window
         self.title("Gestão Financeira - Dashboard")
         self.geometry("1024x768") # Set a default window size
-        customtkinter.set_appearance_mode("System") # Use system theme (default gray background)
+        self.configure(fg_color="#1c1c1c") # Define o fundo da janela principal do Dashboard
+        customtkinter.set_appearance_mode("Dark") # Forçar tema escuro para um visual mais "high-tech"
         customtkinter.set_default_color_theme("blue") # Or choose another theme
 
         # Set grid layout for the main window (1 column for title, 2 columns below title)
@@ -30,28 +45,27 @@ class Dashboard(customtkinter.CTk):
         self.header_frame = customtkinter.CTkFrame(self, fg_color="transparent")
         self.header_frame.grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 10), sticky="ew")
 
-        self.title_label = customtkinter.CTkLabel(self.header_frame, text="Dashboard", font=customtkinter.CTkFont(size=24, weight="bold"))
+        self.title_label = customtkinter.CTkLabel(self.header_frame, text="Dashboard", font=FONTE_TITULO_GRANDE)
         self.title_label.pack(side="left", anchor="w")
 
         # Year Selector elements
         self.year_selector_frame = customtkinter.CTkFrame(self.header_frame, fg_color="transparent")
         self.year_selector_frame.pack(side="right", anchor="e")
 
-        self.year_label = customtkinter.CTkLabel(self.year_selector_frame, text="Ano Referência:", font=customtkinter.CTkFont(size=14))
+        self.year_label = customtkinter.CTkLabel(self.year_selector_frame, text="Ano Referência:", font=(FONTE_FAMILIA, 12))
         self.year_label.pack(side="left", padx=(0, 5))
 
         current_year = datetime.datetime.now().year
         # Gera uma lista de anos, por exemplo, 5 anos para trás e 2 para frente.
         year_options = [str(y) for y in range(current_year - 5, current_year + 3)]
-
-        self.year_combobox = customtkinter.CTkComboBox(self.year_selector_frame, values=year_options, width=100)
+        self.year_combobox = customtkinter.CTkComboBox(self.year_selector_frame, values=year_options, width=100, font=(FONTE_FAMILIA, 12), height=30)
         self.year_combobox.set(str(current_year)) # Define o ano atual como padrão
         self.year_combobox.pack(side="left")
         # Adicionar comando ao combobox se precisar reagir à mudança de ano:
         # self.year_combobox.configure(command=self.year_changed_event)
 
         # --- Top Container for Months ---
-        self.months_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2)
+        self.months_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
         self.months_container_frame.grid(row=1, column=0, columnspan=2, padx=20, pady=10, sticky="nsew") # Span across two columns
 
         # Configure grid for months container (2 rows, 6 columns)
@@ -67,37 +81,37 @@ class Dashboard(customtkinter.CTk):
             row = 0 if i < 6 else 1
             col = i % 6
             # Using a frame for each month allows adding more widgets inside later (e.g., a small chart, numbers)
-            month_frame = customtkinter.CTkFrame(self.months_container_frame, corner_radius=5, fg_color="gray20") # Darker gray for month background
+            month_frame = customtkinter.CTkFrame(self.months_container_frame, corner_radius=5, fg_color="#282828") # Um pouco mais claro que o COR_CONTAINER_INTERNO
             month_frame.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
 
-            month_label = customtkinter.CTkLabel(month_frame, text=month, font=customtkinter.CTkFont(size=14, weight="bold"))
+            month_label = customtkinter.CTkLabel(month_frame, text=month, font=FONTE_NORMAL_BOLD)
             month_label.pack(padx=5, pady=5) # Center the month name
 
             # Add placeholder for data within the month frame
-            data_placeholder = customtkinter.CTkLabel(month_frame, text="R$ 0,00\nData Here", font=customtkinter.CTkFont(size=12), text_color="gray50")
+            data_placeholder = customtkinter.CTkLabel(month_frame, text="R$ 0,00\nData Here", font=FONTE_PEQUENA, text_color="gray50")
             data_placeholder.pack(padx=5, pady=0)
 
 
         # --- Left Container for List Items ---
-        self.list_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2)
-        self.list_container_frame.grid(row=2, column=0, padx=20, pady=(10, 20), sticky="nsew") # Occupies the first column in row 2
+        self.list_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
+        self.list_container_frame.grid(row=2, column=0, padx=(20,10), pady=(10, 20), sticky="nsew") # Occupies the first column in row 2
 
         # Add list items (example)
-        list_items_title = customtkinter.CTkLabel(self.list_container_frame, text="Categorias:", font=customtkinter.CTkFont(size=16, weight="bold"))
+        list_items_title = customtkinter.CTkLabel(self.list_container_frame, text="Categorias:", font=FONTE_TITULO_MEDIO)
         list_items_title.pack(padx=10, pady=(10, 5), anchor="w") # Anchor west
 
         list_items = ["Cat1 R$ 0,00", "Cat2 R$ 0,00", "Cat3 R$ 0,00", "Cat4 R$ 0,00"]
         for item in list_items:
-            item_label = customtkinter.CTkLabel(self.list_container_frame, text=item, font=customtkinter.CTkFont(size=14))
+            item_label = customtkinter.CTkLabel(self.list_container_frame, text=item, font=FONTE_NORMAL)
             item_label.pack(padx=20, pady=2, anchor="w") # Anchor west, add some padding
 
 
         # --- Bottom Container for Pie Chart ---
-        self.pie_chart_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2)
-        self.pie_chart_container_frame.grid(row=2, column=1, padx=20, pady=(10, 20), sticky="nsew") # Occupies the second column in row 2
+        self.pie_chart_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
+        self.pie_chart_container_frame.grid(row=2, column=1, padx=(10,20), pady=(10, 20), sticky="nsew") # Occupies the second column in row 2
 
         # Placeholder for the pie chart
-        pie_chart_placeholder_label = customtkinter.CTkLabel(self.pie_chart_container_frame, text="Gráfico de Pizza Placeholder", font=customtkinter.CTkFont(size=16, weight="bold"))
+        pie_chart_placeholder_label = customtkinter.CTkLabel(self.pie_chart_container_frame, text="Gráfico de Pizza Placeholder", font=FONTE_TITULO_MEDIO)
         pie_chart_placeholder_label.pack(expand=True, fill="both", padx=20, pady=20) # Center placeholder text
 
         # --- Bottom Container for Action Buttons and Logo ---
@@ -113,32 +127,34 @@ class Dashboard(customtkinter.CTk):
         # Usaremos pack para os botões e place para o logo
 
         # Botões de Ação
-        button_font = customtkinter.CTkFont(size=14)
+        button_font = FONTE_BOTAO_ACAO
         button_width = 150
-        button_height = 35
+        button_height = 35 # Altura padrão dos botões
+        button_corner_radius = 17 # Para cantos bem arredondados, ~metade da altura
         
         # Define as cores para os botões
         cor_botao_cinza = "gray30"  # Um cinza mais escuro do customtkinter
         cor_botao_azul_hover = "#2196F3" # O mesmo azul usado anteriormente para hover
 
         self.details_button = customtkinter.CTkButton(buttons_inner_frame, text="Detalhes",
-                                                      font=button_font, width=button_width, height=button_height,
+                                                      font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
                                                       fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover)
         self.details_button.pack(side="left", padx=5) # Removido pady daqui, já está no buttons_inner_frame
 
         self.categories_button = customtkinter.CTkButton(buttons_inner_frame, text="Categorias",
-                                                         font=button_font, width=button_width, height=button_height,
+                                                         font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
                                                          fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover)
         self.categories_button.pack(side="left", padx=5)
 
         self.new_expense_button = customtkinter.CTkButton(buttons_inner_frame, text="Nova Despesa",
-                                                          font=button_font, width=button_width, height=button_height,
+                                                          font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
                                                           fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover)
         self.new_expense_button.pack(side="left", padx=5)
 
         self.new_category_button = customtkinter.CTkButton(buttons_inner_frame, text="Nova Categoria",
-                                                           font=button_font, width=button_width, height=button_height,
-                                                           fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover)
+                                                           font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
+                                                                   fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover,
+                                                           command=self.open_form_cadastro) # Adiciona comando
         self.new_category_button.pack(side="left", padx=5)
 
         # Logo como Marca d'água
@@ -156,10 +172,17 @@ class Dashboard(customtkinter.CTk):
         except Exception as e:
             print(f"Erro ao carregar a imagem do logo: {e}")
 
+    def open_form_cadastro(self):
+        if self.form_cadastro_window is None or not self.form_cadastro_window.winfo_exists(): # Verifica se a janela não existe ou foi fechada
+            self.form_cadastro_window = FormCadastroWindow(master=self, current_user_id=self.current_user_id) # Cria uma nova instância da janela de cadastro
+            self.form_cadastro_window.focus() # Traz a nova janela para o foco
+        else:
+            self.form_cadastro_window.focus() # Se a janela já existe, apenas a traz para o foco
+
     # def year_changed_event(self, selected_year):
     #     print(f"Ano selecionado: {selected_year}")
     #     # Aqui você adicionaria a lógica para recarregar os dados do dashboard para o ano selecionado.
 
 if __name__ == "__main__":
-    app = Dashboard()
+    app = Dashboard(user_id="test_user_01") # Passa um user_id para teste
     app.mainloop()

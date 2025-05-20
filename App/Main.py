@@ -23,6 +23,11 @@ indice_telas_containers = [
 
 # Classe principal da janela de Login.
 class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os objetos de interface do usuário.
+    # Define a família de fontes padrão para esta janela
+    FONTE_FAMILIA = "Segoe UI"
+    FONTE_TAMANHO_LABEL = 14
+    FONTE_TAMANHO_COMBO = 12
+    FONTE_TAMANHO_BOTAO = 14
     def __init__(self):
         super().__init__() # Chama o construtor da classe pai (QWidget).
         self.largura_janela = 940
@@ -52,7 +57,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         if self.original_imagem_fundo.isNull(): # Verifica se a imagem foi carregada corretamente.
             print(f"Erro: A imagem de fundo '{self.caminho_imagem_fundo}' não foi encontrada ou não pôde ser carregada.")
             # Define uma cor de fundo padrão caso a imagem falhe ao carregar.
-            self.setStyleSheet("background-color: #2b2b2b;") # Um cinza escuro.
+            self.setStyleSheet("background-color: #1c1c1c;") # Cinza quase preto.
             self.imagem_fundo = None # Garante que imagem_fundo seja None se a original não carregar
         else:
             # Escala a imagem de fundo para o tamanho inicial da janela.
@@ -90,14 +95,14 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
 
         # Rótulo "Usuário:".
         self.label_usuario = QLabel("Usuário:", user_input_frame) # Cria um QLabel.
-        self.label_usuario.setFont(QFont("Arial", 16)) # Define a fonte.
+        self.label_usuario.setFont(QFont(self.FONTE_FAMILIA, self.FONTE_TAMANHO_LABEL)) # Define a fonte.
         self.label_usuario.setStyleSheet("color: white; background-color: transparent;") # Cor do texto e fundo transparente.
         user_input_layout.addWidget(self.label_usuario) # Adiciona ao layout horizontal.
 
         # Caixa de seleção (ComboBox) para os usuários.
         self.combo_usuario = QComboBox(user_input_frame) # Cria um QComboBox.
         self.combo_usuario.setMinimumWidth(180) # Ajuste da largura mínima.
-        self.combo_usuario.setFont(QFont("Arial", 12)) # Define a fonte.
+        self.combo_usuario.setFont(QFont(self.FONTE_FAMILIA, self.FONTE_TAMANHO_COMBO)) # Define a fonte.
         # Estilização do ComboBox via QSS (Qt Style Sheets).
         self.combo_usuario.setStyleSheet("""
             QComboBox {
@@ -138,7 +143,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         # Dimensões do botão reduzidas.
         self.button_iniciar.setMinimumHeight(35) # Define altura mínima.
         self.button_iniciar.setMinimumWidth(180) # Define largura mínima.
-        self.button_iniciar.setFont(QFont("Arial", 14, QFont.Weight.Bold)) # Define a fonte (tamanho ligeiramente reduzido).
+        self.button_iniciar.setFont(QFont(self.FONTE_FAMILIA, self.FONTE_TAMANHO_BOTAO, QFont.Weight.Bold)) # Define a fonte.
         # Estilização do botão via QSS.
         self.button_iniciar.setStyleSheet("""
             QPushButton {
@@ -170,7 +175,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
             painter.drawPixmap(self.rect(), self.imagem_fundo)
         else:
             # Se a imagem não carregou, preenche com uma cor sólida (alternativa ao stylesheet).
-            painter.fillRect(self.rect(), QColor("#2b2b2b"))
+            painter.fillRect(self.rect(), QColor("#1c1c1c")) # Cinza quase preto
         super().paintEvent(event) # Chama o paintEvent da classe pai.
 
     def resizeEvent(self, event):
