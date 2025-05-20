@@ -22,7 +22,7 @@ FONTE_LINK = (FONTE_FAMILIA, 11, "underline") # Fonte para o link
 COR_CONTAINER_INTERNO_FORM = "#222222"
 
 class FormTransacaoWindow(customtkinter.CTkToplevel):
-    def __init__(self, master=None, current_user_id=None, tipo_transacao="Despesa"): # tipo_transacao pode ser "Despesa" ou "Provento"
+    def __init__(self, master=None, current_user_id=None, tipo_transacao="Despesa", on_save_callback=None): # Adicionado on_save_callback
         super().__init__(master)
         self.title(f"Nova {tipo_transacao}")
         self.geometry("450x550")
@@ -30,6 +30,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
         self.lift()
         self.attributes("-topmost", True)
         self.grab_set()
+        self.on_save_callback = on_save_callback # Armazena o callback
 
         self.minsize(400, 500)
 
@@ -248,6 +249,8 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
             self.status_var.set("Em Aberto") # Reseta status
             self.update_date_fields_visibility() # Atualiza a visibilidade dos campos de data
             self.description_entry.focus() # Foca no primeiro campo
+            if self.on_save_callback: # Chama o callback se ele foi fornecido
+                self.on_save_callback()
         else:
             print(f"Falha ao salvar {self.tipo_transacao}.") # TODO: Mostrar alerta na GUI
 

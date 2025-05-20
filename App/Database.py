@@ -285,6 +285,7 @@ def get_category_summary_for_month(user_id, year, month_number):
     Retorna uma lista de dicionários: {'category_name': str, 'category_type': str, 'category_color': str, 'total_value': float}
     """
     conn = get_db_connection()
+    print(f"DEBUG DB: get_category_summary_for_month - user_id: {user_id}, year: {year}, month_number: {month_number}")
     cursor = conn.cursor()
     query = """
         SELECT
@@ -307,8 +308,42 @@ def get_category_summary_for_month(user_id, year, month_number):
     """
     cursor.execute(query, (user_id, str(year), month_number))
     results = cursor.fetchall()
+    print(f"DEBUG DB: get_category_summary_for_month - Raw results: {results}")
     conn.close()
     return results
+
+def get_category_totals_for_year(user_id, year, category_type):
+    """
+    Busca a soma total das transações por categoria para um usuário, ano e tipo de categoria específicos.
+    Retorna uma lista de dicionários: {'category_name': str, 'total_value': float}
+    ordenada pelo nome da categoria.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    query = """
+        SELECT
+            c.name AS category_name,
+            c.color AS category_color,
+            SUM(t.value) AS total_value
+        FROM
+            transactions t
+        JOIN
+            categories c ON t.category_id = c.id
+        WHERE
+            t.user_id = ? AND
+            SUBSTR(t.due_date, 1, 4) = ? AND -- Ano
+            c.type = ? -- Tipo de Categoria (Despesa ou Provento)
+        GROUP BY
+            c.id, c.name, c.color
+        HAVING
+            SUM(t.value) IS NOT NULL -- Garante que apenas categorias com transações sejam retornadas
+        ORDER BY
+            c.name ASC;
+    """
+    cursor.execute(query, (user_id, str(year), category_type))
+    results = cursor.fetchall()
+    conn.close()
+    return [{"category_name": row["category_name"], "category_color": row["category_color"], "total_value": row["total_value"]} for row in results]
 
 # Bloco para inicializar o banco de dados quando este script for executado diretamente (opcional, para teste).
 if __name__ == "__main__":
