@@ -25,6 +25,7 @@ class Dashboard(customtkinter.CTk):
         self.current_user_id = user_id # Armazena o ID do usuário.
         self.form_cadastro_window = None # Referência para a janela de cadastro
         self.form_transacao_window = None # Referência para a janela de transação
+        self.request_restart_on_close = False # Sinalizador para reinício
         # self.main_app_window = master # Removido, pois 'master' não é passado e a lógica de voltar já funciona
         print(f"Dashboard iniciado para o usuário ID: {self.current_user_id}")
         
@@ -47,14 +48,6 @@ class Dashboard(customtkinter.CTk):
         # --- Header Frame (Title and Year Selector) ---
         self.header_frame = customtkinter.CTkFrame(self, fg_color="transparent")
         self.header_frame.grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 10), sticky="ew")
-
-        # Botão Voltar
-        self.back_button = customtkinter.CTkButton(self.header_frame, text="< Voltar",
-                                                   command=self.go_back_to_main,
-                                                   width=80, height=28,
-                                                   font=(FONTE_FAMILIA, 12, "bold"),
-                                                   corner_radius=14)
-        self.back_button.pack(side="left", anchor="nw", padx=(0, 20))
 
         self.title_label = customtkinter.CTkLabel(self.header_frame, text="Dashboard", font=FONTE_TITULO_GRANDE)
         self.title_label.pack(side="left", anchor="w")
@@ -155,17 +148,24 @@ class Dashboard(customtkinter.CTk):
         cor_botao_cinza = "gray30"  # Um cinza mais escuro do customtkinter
         cor_botao_azul_hover = "#2196F3" # O mesmo azul usado anteriormente para hover
 
-        self.details_button = customtkinter.CTkButton(buttons_inner_frame, text="Detalhes",
-                                                      font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
-                                                      fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover)
-        self.details_button.pack(side="left", padx=5) # Removido pady daqui, já está no buttons_inner_frame
+        # Botão Voltar (agora na parte inferior com o mesmo estilo dos outros botões de ação)
+        self.back_button = customtkinter.CTkButton(buttons_inner_frame, text="< Voltar",
+                                                   command=self.go_back_to_main,
+                                                   font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
+                                                   fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover)
+        self.back_button.pack(side="left", padx=5)
 
+        # Movendo "Cadastrar Despesa/Provento" para ser o primeiro botão da lista
         self.transaction_button = customtkinter.CTkButton(buttons_inner_frame, text="Cadastrar Despesa/Provento",
                                                          font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
                                                          fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover,
                                                          command=lambda: self.open_form_transacao("Despesa")) # Abre como Despesa por padrão
         self.transaction_button.pack(side="left", padx=5)
 
+        self.details_button = customtkinter.CTkButton(buttons_inner_frame, text="Detalhes",
+                                                      font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
+                                                      fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover)
+        self.details_button.pack(side="left", padx=5) # Removido pady daqui, já está no buttons_inner_frame
 
         self.new_category_button = customtkinter.CTkButton(buttons_inner_frame, text="Nova Categoria",
                                                            font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
@@ -214,9 +214,8 @@ class Dashboard(customtkinter.CTk):
 
     def go_back_to_main(self):
         """Fecha a janela do Dashboard e sinaliza para a janela principal (Login) reaparecer."""
-        # A lógica de reexibir a LoginWindow já está no Main.py, no método abrir_dashboard,
-        # após o self.dashboard_window.mainloop() terminar.
-        # Apenas precisamos fechar esta janela do Dashboard.
+        print("Botão Voltar clicado no Dashboard. Solicitando reinício da aplicação.")
+        self.request_restart_on_close = True
         self.destroy() # Isso fará com que o mainloop() no Main.py continue.
 
     # def year_changed_event(self, selected_year):

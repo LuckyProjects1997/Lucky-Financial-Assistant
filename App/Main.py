@@ -2,6 +2,8 @@
 
 # Importa os módulos necessários do PySide6 para a interface gráfica.
 import sys # Usado para sair da aplicação.
+import os # Para interagir com o sistema operacional (reiniciar)
+import subprocess # Para iniciar um novo processo (reiniciar)
 from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QComboBox, QMessageBox,
                                QPushButton, QVBoxLayout, QHBoxLayout, QFrame) # Widgets e layouts.
 from PySide6.QtGui import QPixmap, QPainter, QColor, QFont # Para imagens, pintura, cores e fontes.
@@ -30,6 +32,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
     FONTE_TAMANHO_LABEL = 14
     FONTE_TAMANHO_COMBO = 12
     FONTE_TAMANHO_BOTAO = 14
+    SHOULD_RESTART_APP = False # Sinalizador de classe para reinício
     def __init__(self):
         super().__init__() # Chama o construtor da classe pai (QWidget).
         self.largura_janela = 940
@@ -229,10 +232,20 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
             print(f"Erro ao tentar abrir o Dashboard: {e}")
             self.show() # Se houver um erro, mostra a janela de login novamente.
         
-        # Após o dashboard_window.mainloop() terminar (ou seja, a janela do dashboard for fechada),
-        # fecha a aplicação de login (PySide6).
-        self.close() # Fecha a janela de login (e, por consequência, a aplicação PySide6 se for a última janela).
+        # Após o dashboard_window.mainloop() terminar
+        should_restart = getattr(self.dashboard_window, 'request_restart_on_close', False)
 
+        if should_restart:
+            self.initiate_app_restart()
+        else:
+            # Se o Dashboard foi fechado normalmente (não pelo botão "Voltar" para reiniciar),
+            # a LoginWindow também será fechada, terminando a aplicação.
+            self.close()
+
+    def initiate_app_restart(self):
+        print("Iniciando o processo de reinício da aplicação...")
+        LoginWindow.SHOULD_RESTART_APP = True
+        QApplication.instance().quit() # Encerra o loop de eventos do PySide6
     def abrir_formulario_cadastro_usuario(self, event=None): # event é passado por mousePressEvent
         """Abre o formulário de cadastro de usuário."""
         self.hide() # Esconde a janela de login
@@ -293,9 +306,18 @@ def main():
     # Cria e exibe a janela de login.
     login_window = LoginWindow() # Instancia a janela de login.
     login_window.show() # Torna a janela visível.
-
     # Inicia o loop de eventos da aplicação.
-    sys.exit(app.exec()) # app.exec() inicia o loop, sys.exit garante uma saída limpa.
+    exit_code = app.exec() # app.exec() inicia o loop
+
+    if LoginWindow.SHOULD_RESTART_APP:
+        print("Reiniciando a aplicação...")
+        python_executable = sys.executable
+        script_path = os.path.abspath(__file__) # Obtém o caminho absoluto do script atual (Main.py)
+        # Usar subprocess.Popen para iniciar um novo processo desanexado
+        subprocess.Popen([python_executable, script_path])
+        sys.exit(0) # Sai do processo atual
+    else:
+        sys.exit(exit_code) # Sai com o código de saída da aplicação
 
 # Ponto de entrada do script: verifica se o arquivo está sendo executado diretamente.
 if __name__ == "__main__":
