@@ -131,6 +131,8 @@ class FormCadastroWindow(customtkinter.CTkToplevel):
         self.save_category_button = customtkinter.CTkButton(self.category_form_content_frame, text="Salvar Categoria", command=self.save_new_category,
                                                        height=BOTAO_HEIGHT, font=FONTE_BOTAO_FORM, corner_radius=BOTAO_CORNER_RADIUS,
                                                        fg_color=BOTAO_FG_COLOR, hover_color=BOTAO_HOVER_COLOR)
+        # O grid() é chamado aqui para posicionar o botão no layout do category_form_content_frame
+
         self.save_category_button.grid(row=5, column=0, pady=(5,15)) # Centralizado por padrão
 
         # Botão para Excluir Categoria (inicialmente escondido)
@@ -138,6 +140,7 @@ class FormCadastroWindow(customtkinter.CTkToplevel):
                                                               height=BOTAO_HEIGHT, font=FONTE_BOTAO_FORM, corner_radius=BOTAO_CORNER_RADIUS,
                                                               fg_color="#c0392b", hover_color="#e74c3c") # Cores para indicar perigo/exclusão
         # Não usamos grid() aqui, ele será gerenciado dinamicamente
+        # self.delete_category_button.grid(...) é gerenciado por on_category_click e clear_category_form
 
         # --- Lista de Categorias Existentes ---
         category_list_label = customtkinter.CTkLabel(self.category_content_frame, text="Categorias Cadastradas:", font=FONTE_TITULO_FORM)
@@ -150,9 +153,30 @@ class FormCadastroWindow(customtkinter.CTkToplevel):
         # Carregar a lista de categorias ao abrir a seção
         # self.load_categories_list() # Carregado quando a seção de categoria é expandida
 
+        # Desabilitar campos de categoria inicialmente
+        self._set_category_input_state("disabled")
+
         # Botão Fechar
         close_button = customtkinter.CTkButton(main_frame, text="Fechar", command=self.handle_close_action, height=BOTAO_HEIGHT, font=FONTE_BOTAO_FORM, corner_radius=BOTAO_CORNER_RADIUS, fg_color=BOTAO_FG_COLOR, hover_color=BOTAO_HOVER_COLOR)
         close_button.grid(row=4, column=0, pady=(20,0), sticky="s") # Usa grid, sticky="s" para alinhar ao sul (bottom)
+
+    def _find_widget_by_text(self, parent, text_to_find):
+        """
+        Busca recursivamente um widget com um texto específico dentro de um frame pai.
+        Retorna o widget se encontrado, caso contrário None.
+        """
+        for widget in parent.winfo_children():
+            # Check if the widget is of a type that has a 'text' attribute accessible via cget
+            if isinstance(widget, (customtkinter.CTkButton, customtkinter.CTkLabel)):
+                if hasattr(widget, 'cget') and widget.cget('text') == text_to_find:
+                    return widget
+            # Se o widget for um frame, busca recursivamente dentro dele
+            # Also check for CTkScrollableFrame if you nest buttons inside those
+            if isinstance(widget, (customtkinter.CTkFrame, customtkinter.CTkScrollableFrame)):
+                found = self._find_widget_by_text(widget, text_to_find)
+                if found:
+                    return found
+        return None
 
     def choose_color(self):
         # É necessário um root Tkinter temporário para o color chooser funcionar bem com CTk Toplevel
@@ -186,12 +210,28 @@ class FormCadastroWindow(customtkinter.CTkToplevel):
         """Expande ou colapsa a seção de gerenciamento de categorias."""
         if self.category_content_frame.winfo_ismapped(): # Verifica se o frame está visível
             self.category_content_frame.grid_forget() # Esconde o frame
-            self.category_toggle_button.configure(text="Categoria")
+            self.category_toggle_button.configure(text="Categoria") # Reseta o texto do botão
+            self._set_category_input_state("disabled") # Desabilita os campos
+            self.clear_category_form() # Limpa o formulário e esconde botões de ação
         else:
             self.category_content_frame.grid(row=3, column=0, pady=10, sticky="ew", padx=10) # Mostra o frame, mas não expande verticalmente além do seu conteúdo
             self.category_toggle_button.configure(text="Categoria")
             self.category_content_frame.lift() # Garante que está acima de outros widgets no main_frame
             self.load_categories_list() # Carrega a lista quando a seção é expandida
+            self._set_category_input_state("normal") # Habilita os campos
+            self.clear_category_form() # Limpa o formulário para um novo cadastro e ajusta botões de ação
+
+    def _set_category_input_state(self, state):
+        """Define o estado (normal/disabled) dos campos de entrada e seleção de cor da seção de categoria."""
+        # Campos de entrada e seleção
+        self.category_name_entry.configure(state=state)
+        self.category_type_combobox.configure(state=state)
+        # Botão de escolher cor
+        # Encontra o botão "Escolher Cor" pelo seu texto
+        # O botão está dentro de color_selection_frame, que é filho de category_form_content_frame
+        choose_color_button = self._find_widget_by_text(self.category_form_content_frame, "Escolher Cor")
+        if choose_color_button:
+            choose_color_button.configure(state=state)
 
     def save_new_user(self):
         user_name = self.user_name_entry.get().strip() # Obtém o nome e remove espaços em branco
@@ -303,7 +343,7 @@ class FormCadastroWindow(customtkinter.CTkToplevel):
         # Altera o texto do botão para indicar que está atualizando
         self.save_category_button.configure(text="Atualizar Categoria")
         self.delete_category_button.grid(row=7, column=0, pady=(0,15))
-
+        
     def clear_category_form(self):
         """Limpa o formulário de categoria para adicionar uma nova."""
         self.editing_category_id = None # Reseta o ID de edição
@@ -313,7 +353,7 @@ class FormCadastroWindow(customtkinter.CTkToplevel):
         self.selected_color_hex = "#FFFFFF" # Reseta a cor para branco
         self.color_preview_label.configure(fg_color=self.selected_color_hex)
         self.save_category_button.configure(text="Salvar Categoria") # Reseta o texto do botão
-        # Esconde o botão Excluir
+        # Esconde o botão Excluir usando grid_remove ou grid_forget
         self.delete_category_button.grid_remove()
         print("Formulário de categoria limpo.")
 

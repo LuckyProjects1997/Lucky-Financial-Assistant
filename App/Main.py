@@ -12,7 +12,8 @@ from PySide6.QtCore import Qt, QSize # Para alinhamentos, tamanhos, etc.
 # Importa a classe Dashboard do arquivo Dashboard.py
 from Dashboard import Dashboard
 # Importa a janela de formulário de cadastro
-from form_cadastro import FormCadastroWindow
+# from form_cadastro import FormCadastroWindow # Removido
+from form_cadastro_usuario import FormCadastroUsuarioWindow # Importa o formulário de usuário
 # Importa as funções do nosso novo módulo de banco de dados.
 import Database
 
@@ -264,7 +265,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
                 if temp_ctk_root and temp_ctk_root.winfo_exists():
                     temp_ctk_root.destroy() # Destrói o root temporário, terminando seu mainloop
 
-            self.form_cadastro_win_ref = FormCadastroWindow(master=temp_ctk_root)
+            self.form_cadastro_win_ref = FormCadastroUsuarioWindow(master=temp_ctk_root) # Abre o formulário de usuário
             self.form_cadastro_win_ref.on_close_callback = on_form_closed_callback # Define o callback
             # Também lida com o fechamento pelo botão [X] da janela
             self.form_cadastro_win_ref.protocol("WM_DELETE_WINDOW", on_form_closed_callback)

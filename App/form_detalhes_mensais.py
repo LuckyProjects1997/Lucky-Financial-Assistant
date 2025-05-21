@@ -3,6 +3,7 @@ import customtkinter
 import tkinter as tk # Para constantes de alinhamento
 from CTkMessagebox import CTkMessagebox # Para caixas de diálogo de confirmação
 from Database import get_transactions_for_month, get_category_summary_for_month, delete_transaction # Importa funções do Database
+from form_consulta_transacao import FormConsultaTransacaoWindow # Importa a nova janela
 
 # Definições de fonte padrão (pode ajustar conforme necessário)
 FONTE_FAMILIA = "Segoe UI"
@@ -33,6 +34,7 @@ class FormDetalhesMensaisWindow(customtkinter.CTkToplevel):
         self.all_transactions_for_month = []
         self.selected_transaction_ids = set() # Para armazenar IDs das transações selecionadas pelos checkboxes
         self.current_filter_type = None # "Despesa", "Provento", ou None
+        self.form_consulta_transacao_window = None # Referência para a janela de consulta
         self.current_month_name_selected = None # Para recarregar a view
 
         # --- Frame Principal ---
@@ -229,12 +231,15 @@ class FormDetalhesMensaisWindow(customtkinter.CTkToplevel):
 
             row_frame = customtkinter.CTkFrame(self.left_detail_scroll_frame, fg_color=row_frame_fg_color, corner_radius=3)
             row_frame.pack(fill="x", pady=1, padx=2)
-            row_frame.grid_columnconfigure(0, weight=0) # Checkbox
-            row_frame.grid_columnconfigure(1, weight=2) # Data
-            row_frame.grid_columnconfigure(2, weight=4) # Descrição
-            row_frame.grid_columnconfigure(3, weight=3) # Categoria
-            row_frame.grid_columnconfigure(4, weight=2) # Valor
-            row_frame.grid_columnconfigure(5, weight=1) # Status
+             # Configuração de colunas para os elementos dentro de row_frame
+            row_frame.grid_columnconfigure(0, weight=0)  # Checkbox (Sel.)
+            row_frame.grid_columnconfigure(1, weight=2)  # Data Venc.
+            row_frame.grid_columnconfigure(2, weight=4)  # Descrição
+            row_frame.grid_columnconfigure(3, weight=3)  # Categoria
+            row_frame.grid_columnconfigure(4, weight=1)  # Parcelas
+            row_frame.grid_columnconfigure(5, weight=2)  # Valor
+            row_frame.grid_columnconfigure(6, weight=1)  # Status
+            row_frame.grid_columnconfigure(7, weight=2)  # Data Lanç.
 
             # Checkbox para seleção
             checkbox_var = customtkinter.StringVar(value="off")
@@ -245,13 +250,24 @@ class FormDetalhesMensaisWindow(customtkinter.CTkToplevel):
             if trans['id'] in self.selected_transaction_ids: # Mantém estado do checkbox ao redesenhar
                 checkbox_var.set("on")
 
-            customtkinter.CTkLabel(row_frame, text=trans['due_date'], font=FONTE_LABEL_PEQUENA).grid(row=0, column=1, sticky="w", padx=2)
-            customtkinter.CTkLabel(row_frame, text=trans['description'], font=FONTE_LABEL_PEQUENA, anchor="w").grid(row=0, column=2, sticky="ew", padx=2) # Já estava ew, correto
-            # Categoria sem cor de fundo, usa cor de texto padrão
-            cat_label = customtkinter.CTkLabel(row_frame, text=trans['category_name'], font=FONTE_LABEL_PEQUENA, corner_radius=3, padx=3, anchor="w") # Adicionado anchor="w"
+            # Labels dentro do row_frame
+            # Tornar os labels clicáveis também, ou o frame inteiro
+            due_date_label = customtkinter.CTkLabel(row_frame, text=trans.get('due_date', 'N/A'), font=FONTE_LABEL_PEQUENA, cursor="hand2")
+            due_date_label.grid(row=0, column=1, sticky="w", padx=2)
+            description_label = customtkinter.CTkLabel(row_frame, text=trans['description'], font=FONTE_LABEL_PEQUENA, anchor="w", cursor="hand2")
+            description_label.grid(row=0, column=2, sticky="ew", padx=2)# Categoria sem cor de fundo, usa cor de texto padrão
+            cat_label = customtkinter.CTkLabel(row_frame, text=trans['category_name'], font=FONTE_LABEL_PEQUENA, corner_radius=3, padx=3, anchor="w", cursor="hand2")
             cat_label.grid(row=0, column=3, sticky="ew", padx=2) # Alterado para sticky="ew"
-            customtkinter.CTkLabel(row_frame, text=f"R$ {trans['value']:.2f}", font=FONTE_LABEL_PEQUENA, text_color=text_color_val).grid(row=0, column=4, sticky="e", padx=2)
-            customtkinter.CTkLabel(row_frame, text=trans['status'], font=FONTE_LABEL_PEQUENA).grid(row=0, column=5, sticky="w", padx=2)
+            customtkinter.CTkLabel(row_frame, text=trans.get('installments', '-'), font=FONTE_LABEL_PEQUENA, cursor="hand2").grid(row=0, column=4, sticky="w", padx=2)
+            customtkinter.CTkLabel(row_frame, text=f"R$ {trans['value']:.2f}", font=FONTE_LABEL_PEQUENA, text_color=text_color_val, cursor="hand2").grid(row=0, column=5, sticky="e", padx=2)
+            customtkinter.CTkLabel(row_frame, text=trans.get('status', 'N/A'), font=FONTE_LABEL_PEQUENA, cursor="hand2").grid(row=0, column=6, sticky="w", padx=2)
+            customtkinter.CTkLabel(row_frame, text=trans.get('launch_date', 'N/A'), font=FONTE_LABEL_PEQUENA, cursor="hand2").grid(row=0, column=7, sticky="w", padx=2)
+            
+            # Bind click event to the entire row_frame
+            row_frame.bind("<Button-1>", lambda event, t_id=trans['id']: self._open_consulta_transacao(t_id))
+            for child in row_frame.winfo_children(): # Bind para os filhos também, exceto o checkbox
+                if not isinstance(child, customtkinter.CTkCheckBox):
+                    child.bind("<Button-1>", lambda event, t_id=trans['id']: self._open_consulta_transacao(t_id))
 
     def _toggle_selection(self, transaction_id, checkbox_var):
         """
@@ -327,6 +343,18 @@ class FormDetalhesMensaisWindow(customtkinter.CTkToplevel):
         """Recarrega os dados do mês atual após uma ação como editar ou excluir."""
         if self.current_month_name_selected:
             self.month_detail_selected(self.current_month_name_selected, self.selected_year, self.current_user_id)
+
+    def _open_consulta_transacao(self, transaction_id):
+        print(f"Abrindo consulta para transação ID: {transaction_id}")
+        if self.form_consulta_transacao_window is None or not self.form_consulta_transacao_window.winfo_exists():
+            self.form_consulta_transacao_window = FormConsultaTransacaoWindow(
+                master=self, transaction_id=transaction_id, on_save_callback=self._refresh_after_action
+            )
+            self.form_consulta_transacao_window.focus()
+        else:
+            self.form_consulta_transacao_window.focus()
+
+
 
 if __name__ == '__main__':
     # Para testar esta janela isoladamente

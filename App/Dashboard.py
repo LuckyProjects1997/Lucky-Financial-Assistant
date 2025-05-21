@@ -2,7 +2,8 @@ import customtkinter
 import tkinter as tk
 from PIL import Image # Adicionado para carregar a imagem do logo
 import datetime # Para obter o ano atual 
-from form_cadastro import FormCadastroWindow # Importa a nova janela de formulário de cadastro
+# from form_cadastro import FormCadastroWindow # Removido
+from form_cadastro_categoria import FormCadastroCategoriaWindow # Importa o formulário de categoria
 from form_detalhes_mensais import FormDetalhesMensaisWindow # Importa a nova janela de detalhes
 
 from form_transacao import FormTransacaoWindow # Importa a nova janela de formulário de transação
@@ -30,7 +31,7 @@ COR_CONTAINER_INTERNO = "#222222" # Cinza mais escuro para containers internos, 
 class Dashboard(customtkinter.CTk):
     def __init__(self, user_id=None): # Adiciona user_id como parâmetro opcional.
         super().__init__()
-        self.current_user_id = user_id # Armazena o ID do usuário.
+        self.current_user_id = user_id # Armazena o ID do usuário logado.
         self.form_cadastro_window = None # Referência para a janela de cadastro
         self.form_transacao_window = None # Referência para a janela de transação
         self.form_detalhes_mensais_window = None # Referência para a janela de detalhes mensais
@@ -42,12 +43,10 @@ class Dashboard(customtkinter.CTk):
         self.list_container_title_label = None # Label para o título do list_container_frame
         print(f"Dashboard iniciado para o usuário ID: {self.current_user_id}")
         
-        # Configure window
-        self.title("Gestão Financeira - Dashboard")
-        self.geometry("1024x768") # Set a default window size
-        self.configure(fg_color="#1c1c1c") # Define o fundo da janela principal do Dashboard
+        # Configurações globais do CustomTkinter (podem permanecer no início)
         customtkinter.set_appearance_mode("Dark") # Forçar tema escuro para um visual mais "high-tech"
         customtkinter.set_default_color_theme("blue") # Or choose another theme
+
 
         # Set grid layout for the main window (1 column for title, 2 columns below title)
         self.grid_columnconfigure(0, weight=1) # Title column spans the width
@@ -145,9 +144,13 @@ class Dashboard(customtkinter.CTk):
         self.annual_summary_title_label.grid(row=4, column=0, columnspan=2, pady=(20, 5), padx=20, sticky="w")
 
         # --- Left Container for Annual Summary List ---
-        # Transformado em CTkScrollableFrame
-        self.annual_list_container_frame = customtkinter.CTkScrollableFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
+        # Alterado de CTkScrollableFrame para CTkFrame para conter tabelas e totais
+        self.annual_list_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
         self.annual_list_container_frame.grid(row=5, column=0, padx=(20,10), pady=(10, 20), sticky="nsew")
+        # Configurar grid para o annual_list_container_frame gerenciar seus filhos (tabelas e totais)
+        self.annual_list_container_frame.grid_rowconfigure(0, weight=1)  # Linha para o frame das tabelas (expansível)
+        self.annual_list_container_frame.grid_rowconfigure(1, weight=0)  # Linha para o frame dos totais
+        self.annual_list_container_frame.grid_columnconfigure(0, weight=1) # Coluna única para expandir os frames internos
         self.load_annual_category_summaries() # Carrega os resumos anuais AQUI
 
         # --- Right Container for Annual Summary Pie Chart ---
@@ -231,9 +234,28 @@ class Dashboard(customtkinter.CTk):
         except Exception as e:
             print(f"Erro ao carregar a imagem do logo: {e}")
 
+        # Pré-seleciona Janeiro ao iniciar
+        if self.months_list: # Garante que a lista de meses exista
+            self.month_button_clicked(0) # 0 é o índice para Janeiro
+
+        # Configurações da janela principal (movidas para o final do __init__)
+        self.title("Gestão Financeira - Dashboard")
+        # self.geometry("1024x768") # Mantido comentado
+        self.configure(fg_color="#1c1c1c") # Define o fundo da janela principal do Dashboard
+        # Define o tamanho da janela igual à resolução da tela do usuário
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        self.geometry(f"{screen_width}x{screen_height}")
+
     def open_form_cadastro(self):
         if self.form_cadastro_window is None or not self.form_cadastro_window.winfo_exists(): # Verifica se a janela não existe ou foi fechada
-            self.form_cadastro_window = FormCadastroWindow(master=self, current_user_id=self.current_user_id) # Cria uma nova instância da janela de cadastro
+            # Função a ser chamada quando o formulário de categoria for fechado
+            def on_category_form_closed_callback():
+                print("Formulário de cadastro de categoria fechado. Recarregando dados do Dashboard...")
+                self._refresh_dashboard_data() # Recarrega os dados do dashboard (incluindo categorias)
+                self.form_cadastro_window = None # Limpa a referência
+
+            self.form_cadastro_window = FormCadastroCategoriaWindow(master=self, current_user_id=self.current_user_id, on_close_callback=on_category_form_closed_callback) # Abre o formulário de categoria
             self.form_cadastro_window.focus() # Traz a nova janela para o foco
         else:
             self.form_cadastro_window.focus() # Se a janela já existe, apenas a traz para o foco
@@ -302,10 +324,29 @@ class Dashboard(customtkinter.CTk):
             no_data_label.pack(pady=20, padx=10)
             return
 
-        # Função auxiliar para criar a seção de tabela (Despesa ou Provento)
-        def create_summary_section(parent_frame, title, category_type):
-            customtkinter.CTkLabel(parent_frame, text=title, font=FONTE_TITULO_MEDIO).pack(pady=(10,5), padx=10, anchor="w")
+        # Frame para conter as duas tabelas (Despesa e Provento) lado a lado
+        tables_display_frame = customtkinter.CTkFrame(self.annual_list_container_frame, fg_color="transparent")
+        tables_display_frame.grid(row=0, column=0, sticky="nsew", pady=(0,10))
+        tables_display_frame.grid_columnconfigure(0, weight=1)  # Coluna para tabela de Despesas
+        tables_display_frame.grid_columnconfigure(1, weight=1)  # Coluna para tabela de Proventos
+        tables_display_frame.grid_rowconfigure(0, weight=1)     # Linha única para as tabelas expandirem verticalmente
 
+        # Scrollable frame para Despesas
+        despesa_scroll_frame = customtkinter.CTkScrollableFrame(tables_display_frame, label_text="Despesas", label_font=FONTE_NORMAL_BOLD, fg_color="transparent")
+        despesa_scroll_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+
+        # Scrollable frame para Proventos
+        provento_scroll_frame = customtkinter.CTkScrollableFrame(tables_display_frame, label_text="Proventos", label_font=FONTE_NORMAL_BOLD, fg_color="transparent")
+        provento_scroll_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+
+
+        # Função auxiliar para criar a seção de tabela (Despesa ou Provento)
+        def create_summary_section(parent_scroll_frame, category_type):
+            section_total = 0.0
+
+            # 0. Limpar conteúdo anterior do scroll_frame específico (caso seja chamado múltiplas vezes)
+            for widget in parent_scroll_frame.winfo_children():
+                widget.destroy()
             # 1. Obter todas as categorias do usuário para o tipo especificado
             all_user_categories_for_type = [
                 cat for cat in Database.get_categories_by_user(self.current_user_id)
@@ -313,8 +354,8 @@ class Dashboard(customtkinter.CTk):
             ]
 
             if not all_user_categories_for_type:
-                customtkinter.CTkLabel(parent_frame, text=f"Nenhuma categoria de {category_type.lower()} cadastrada.", font=FONTE_NORMAL, text_color="gray60").pack(pady=5, padx=10, anchor="w")
-                return
+                customtkinter.CTkLabel(parent_scroll_frame, text=f"Nenhuma categoria de {category_type.lower()} cadastrada.", font=FONTE_NORMAL, text_color="gray60").pack(pady=5, padx=10, anchor="w")
+                return section_total # Retorna 0.0
 
             # 2. Obter os totais anuais (esta função pode retornar apenas categorias com transações)
             annual_transaction_totals_raw = Database.get_category_totals_for_year(self.current_user_id, selected_year, category_type)
@@ -322,7 +363,7 @@ class Dashboard(customtkinter.CTk):
             # 3. Criar um mapa dos totais para fácil consulta
             annual_totals_map = {item['category_name']: item['total_value'] for item in annual_transaction_totals_raw}
 
-            table_frame = customtkinter.CTkFrame(parent_frame, fg_color="transparent")
+            table_frame = customtkinter.CTkFrame(parent_scroll_frame, fg_color="transparent")
             table_frame.pack(fill="x", padx=10)
             table_frame.grid_columnconfigure(0, weight=3) # Coluna para nome da categoria
             table_frame.grid_columnconfigure(1, weight=1) # Coluna para valor
@@ -335,18 +376,48 @@ class Dashboard(customtkinter.CTk):
             for i, category_data in enumerate(sorted(all_user_categories_for_type, key=lambda x: x['name'])):
                 category_name = category_data["name"]
                 total_value_for_year = annual_totals_map.get(category_name, 0.0) # Default para 0.0
+                section_total += total_value_for_year
 
                 cat_name_label = customtkinter.CTkLabel(table_frame, text=category_name, font=FONTE_NORMAL, anchor="w")
                 cat_name_label.grid(row=i + 1, column=0, sticky="ew", pady=1)
                 
                 total_val_label = customtkinter.CTkLabel(table_frame, text=f"R$ {total_value_for_year:.2f}", font=FONTE_NORMAL, anchor="e")
                 total_val_label.grid(row=i + 1, column=1, sticky="ew", pady=1)
+            return section_total
 
-        # Criar seção de Despesas
-        create_summary_section(self.annual_list_container_frame, "Despesas:", "Despesa")
+        # Popular tabela de Despesas e obter total
+        total_despesas = create_summary_section(despesa_scroll_frame, "Despesa")
 
-        # Criar seção de Proventos
-        create_summary_section(self.annual_list_container_frame, "Proventos:", "Provento")
+        # Popular tabela de Proventos e obter total
+        total_proventos = create_summary_section(provento_scroll_frame, "Provento")
+
+        # Frame para exibir os totais abaixo das tabelas
+        totals_summary_frame = customtkinter.CTkFrame(self.annual_list_container_frame, fg_color="transparent")
+        totals_summary_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(10, 5)) # pady inferior ajustado
+        # Configurar colunas para alinhar texto à esquerda e valor à esquerda da sua coluna
+        totals_summary_frame.grid_columnconfigure(0, weight=0) # Coluna para o texto do label (e.g., "Total Proventos:")
+        totals_summary_frame.grid_columnconfigure(1, weight=1) # Coluna para o valor (e.g., "R$ 100.00")
+
+        # Total Proventos
+        total_proventos_label_text = customtkinter.CTkLabel(totals_summary_frame, text="Total Proventos Anual:", font=FONTE_NORMAL_BOLD, anchor="w")
+        total_proventos_label_text.grid(row=0, column=0, sticky="w", padx=(0,10), pady=(0,2)) # padx à direita para separar do valor
+        total_proventos_label_value = customtkinter.CTkLabel(totals_summary_frame, text=f"R$ {total_proventos:.2f}", font=FONTE_NORMAL_BOLD, text_color="lightgreen", anchor="w")
+        total_proventos_label_value.grid(row=0, column=1, sticky="w", pady=(0,2))
+
+        # Total Despesas
+        total_despesas_label_text = customtkinter.CTkLabel(totals_summary_frame, text="Total Despesas Anual:", font=FONTE_NORMAL_BOLD, anchor="w")
+        total_despesas_label_text.grid(row=1, column=0, sticky="w", padx=(0,10), pady=(0,2))
+        total_despesas_label_value = customtkinter.CTkLabel(totals_summary_frame, text=f"R$ {total_despesas:.2f}", font=FONTE_NORMAL_BOLD, text_color="tomato", anchor="w")
+        total_despesas_label_value.grid(row=1, column=1, sticky="w", pady=(0,2))
+
+        # Saldo Total Anual
+        saldo_anual = total_proventos - total_despesas
+        cor_saldo = "lightgreen" if saldo_anual >= 0 else "tomato"
+
+        saldo_total_label_text = customtkinter.CTkLabel(totals_summary_frame, text="Saldo Total Anual:", font=FONTE_NORMAL_BOLD, anchor="w")
+        saldo_total_label_text.grid(row=2, column=0, sticky="w", padx=(0,10), pady=(2,0)) # pady superior para separar
+        saldo_total_label_value = customtkinter.CTkLabel(totals_summary_frame, text=f"R$ {saldo_anual:.2f}", font=FONTE_NORMAL_BOLD, text_color=cor_saldo, anchor="w")
+        saldo_total_label_value.grid(row=2, column=1, sticky="w", pady=(2,0))
 
     def load_monthly_details_for_list_container(self):
         # Limpa o conteúdo anterior do list_container_frame
@@ -383,23 +454,29 @@ class Dashboard(customtkinter.CTk):
         # Cabeçalhos
         header_frame = customtkinter.CTkFrame(self.list_container_frame, fg_color="transparent")
         header_frame.pack(fill="x", padx=10, pady=(5,2))
-        header_frame.grid_columnconfigure(0, weight=3) # Categoria
-        header_frame.grid_columnconfigure(1, weight=1) # Valor
-        customtkinter.CTkLabel(header_frame, text="Categoria (Tipo)", font=FONTE_NORMAL_BOLD, text_color="gray60").grid(row=0, column=0, sticky="w")
+        header_frame.grid_columnconfigure(0, weight=3) # Categoria (mais peso)
+        header_frame.grid_columnconfigure(1, weight=1) # Valor no Mês
+        customtkinter.CTkLabel(header_frame, text="Categoria", font=FONTE_NORMAL_BOLD, text_color="gray60").grid(row=0, column=0, sticky="w")
         customtkinter.CTkLabel(header_frame, text="Valor no Mês", font=FONTE_NORMAL_BOLD, text_color="gray60").grid(row=0, column=1, sticky="e")
 
         for category in sorted(all_user_categories, key=lambda x: x['name']): # Ordena por nome
             category_name = category['name']
             category_type = category['type']
             total_value_for_month = monthly_totals_map.get((category_name, category_type), 0.0)
+            
+            # Define a cor da fonte com base no tipo da categoria
+            font_color = "tomato" if category_type == "Despesa" else "lightgreen" if category_type == "Provento" else ThemeManager.theme["CTkLabel"]["text_color"]
+            # Se for um tipo não esperado, usa a cor padrão do tema para labels
 
             item_frame = customtkinter.CTkFrame(self.list_container_frame, fg_color="transparent")
             item_frame.pack(fill="x", padx=10, pady=0) # Reduzido pady de 1 para 0
-            item_frame.grid_columnconfigure(0, weight=3)
-            item_frame.grid_columnconfigure(1, weight=1)
+            item_frame.grid_columnconfigure(0, weight=3) # Categoria
+            item_frame.grid_columnconfigure(1, weight=1) # Valor
 
-            customtkinter.CTkLabel(item_frame, text=f"{category_name} ({category_type})", font=FONTE_NORMAL, anchor="w", fg_color=category['color'], corner_radius=3, padx=3).grid(row=0, column=0, sticky="ew")
-            customtkinter.CTkLabel(item_frame, text=f"R$ {total_value_for_month:.2f}", font=FONTE_NORMAL, anchor="e").grid(row=0, column=1, sticky="ew")
+            # Label da Categoria com a cor da fonte definida
+            customtkinter.CTkLabel(item_frame, text=f"{category_name}", font=FONTE_NORMAL, anchor="w", text_color=font_color, corner_radius=3, padx=3).grid(row=0, column=0, sticky="ew")
+            # Label do Valor com a cor da fonte definida
+            customtkinter.CTkLabel(item_frame, text=f"R$ {total_value_for_month:.2f}", font=FONTE_NORMAL, anchor="e", text_color=font_color).grid(row=0, column=1, sticky="ew")
 
     def _create_pie_chart(self, parent_frame, data_values, data_labels, data_colors_hex, chart_title=""):
         # Limpar o frame pai

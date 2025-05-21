@@ -3,7 +3,7 @@
 import sqlite3 # Módulo para interagir com bancos de dados SQLite.
 import os # Módulo para interagir com o sistema operacional, usado para caminhos de arquivo.
 import sys # Para sys.exit em caso de erro crítico
-
+import datetime # Adicionado para usar funcionalidades de data e hora
 
 # Obtém o diretório onde o script database.py está localizado.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -60,8 +60,11 @@ def create_tables():
                 description TEXT NOT NULL,
                 value REAL NOT NULL,
                 due_date TEXT NOT NULL,
-                payment_date TEXT,
-                status TEXT, -- Coluna para armazenar o status da transação (ex: 'Pago', 'Em Aberto')
+                payment_date TEXT, -- Pode ser NULL
+               status TEXT,           -- 'Pago', 'Em Aberto'
+                modality TEXT,         -- 'À vista', 'Parcelado'
+                installments TEXT,     -- Formato "1/N", "2/N", etc. ou NULL/ "1/1" para à vista
+                launch_date TEXT NOT NULL, -- Data de cadastro da transação
                 FOREIGN KEY (user_id) REFERENCES users (id),
                 FOREIGN KEY (category_id) REFERENCES categories (id)
             )
@@ -173,22 +176,80 @@ def update_category(category_id, name, category_type, color):
     finally:
         conn.close()
 
-def add_transaction(transaction_id, user_id, category_id, description, value, due_date, payment_date=None, status=None):
-    """Adiciona uma nova transação ao banco de dados."""
+def add_transaction(transaction_id_base, user_id, category_id, original_description, total_value, initial_due_date, initial_payment_date=None, initial_status=None, modality=None, num_installments=None, launch_date=None):
+    """Adiciona uma nova transação ao banco de dados.
+    Se for parcelado, cria múltiplas entradas.
+    initial_due_date e launch_date devem estar no formato YYYY-MM-DD.
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
+    
+    if launch_date is None:
+        launch_date = datetime.date.today().strftime("%Y-%m-%d")
+
     try:
-        cursor.execute("""
-            INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (transaction_id, user_id, category_id, description, value, due_date, payment_date, status))
+        all_successful = True # Initialize all_successful here
+        if modality == "Parcelado" and num_installments and num_installments > 1:
+            value_per_installment = round(total_value / num_installments, 2)
+            # Ajusta a última parcela para compensar arredondamentos
+            remaining_value = total_value - (value_per_installment * (num_installments - 1))
+
+            current_due_date_obj = datetime.datetime.strptime(initial_due_date, "%Y-%m-%d")
+
+            for i in range(num_installments):
+                parcel_number = i + 1
+                transaction_id = f"{transaction_id_base}-{parcel_number}"
+                description_with_installment = f"{original_description} ({parcel_number}/{num_installments})"
+                installments_str = f"{parcel_number}/{num_installments}"
+                current_value = value_per_installment if parcel_number < num_installments else remaining_value
+
+                if parcel_number == 1:
+                    status_for_installment = initial_status
+                    payment_date_for_installment = initial_payment_date
+                    due_date_for_installment_str = initial_due_date
+                else:
+                    status_for_installment = "Em Aberto" # Parcelas futuras são em aberto
+                    payment_date_for_installment = None
+                    # Calcula a data de vencimento para as parcelas subsequentes
+                    # Adiciona um mês à data de vencimento da parcela anterior
+                    due_date_for_installment_obj = current_due_date_obj.replace(day=1) + datetime.timedelta(days=31) # Vai para o próximo mês
+                    # Tenta manter o mesmo dia do mês, ajustando se o mês for mais curto
+                    try:
+                        due_date_for_installment_obj = due_date_for_installment_obj.replace(day=current_due_date_obj.day)
+                    except ValueError: # Dia inválido para o mês (ex: dia 31 em fevereiro)
+                        # Vai para o último dia do mês anterior (que é o mês correto)
+                        due_date_for_installment_obj = (due_date_for_installment_obj.replace(day=1) - datetime.timedelta(days=1))
+                    
+                    due_date_for_installment_str = due_date_for_installment_obj.strftime("%Y-%m-%d")
+                    current_due_date_obj = due_date_for_installment_obj # Atualiza para a próxima iteração
+
+                cursor.execute("""
+                    INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date, status, modality, installments, launch_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (transaction_id, user_id, category_id, description_with_installment, current_value, due_date_for_installment_str, payment_date_for_installment, status_for_installment, modality, installments_str, launch_date))
+                
+                if cursor.rowcount == 0:
+                    all_successful = False
+                    print(f"Parcela {parcel_number} da transação com ID base '{transaction_id_base}' já existe ou não pôde ser adicionada.")
+        else: # À vista ou parcela única
+            installments_display = "1/1" if modality == "À vista" else f"1/{num_installments or 1}"
+            description_final = f"{original_description} (1/1)" if modality == "À vista" else original_description # Evita duplicar (1/1) se já tiver
+            if modality == "Parcelado" and num_installments == 1: # Se for parcelado mas só 1 parcela
+                 description_final = f"{original_description} (1/1)"
+
+            cursor.execute("""
+                INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date, status, modality, installments, launch_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (transaction_id_base, user_id, category_id, description_final, total_value, initial_due_date, initial_payment_date, initial_status, modality, installments_display, launch_date))
+            if cursor.rowcount == 0:
+                all_successful = False
+                print(f"Transação à vista com ID '{transaction_id_base}' já existe ou não pôde ser adicionada.")
+
         conn.commit()
-        if cursor.rowcount > 0:
-            print(f"Transação '{description}' (ID: {transaction_id}) adicionada com sucesso para o usuário ID: {user_id}.")
-            return True
-        else:
-            print(f"Transação com ID '{transaction_id}' já existe ou não pôde ser adicionada.")
-            return False
+        if all_successful:
+            print(f"Transação(ões) baseada(s) em '{original_description}' (ID base: {transaction_id_base}) adicionada(s) com sucesso para o usuário ID: {user_id}.")
+        return all_successful
+
     except sqlite3.Error as e:
         print(f"Erro ao adicionar transação: {e}")
         return False
@@ -388,6 +449,9 @@ def get_transactions_for_month(user_id, year, month_number):
             t.due_date,
             t.payment_date,
             t.status,
+            t.modality,
+            t.launch_date,
+            t.installments,
             c.name AS category_name,
             c.type AS category_type,
             c.color AS category_color
@@ -406,7 +470,71 @@ def get_transactions_for_month(user_id, year, month_number):
     results = cursor.fetchall()
     print(f"DEBUG DB: get_transactions_for_month (DETAILS) - Raw results: {results}")
     conn.close()
-    return results
+    # Converte os objetos Row para dicionários, incluindo os novos campos
+    return [
+        {
+            "id": row["id"], "description": row["description"], "value": row["value"],
+            "due_date": row["due_date"], "payment_date": row["payment_date"],
+            "status": row["status"], "category_name": row["category_name"],
+            "category_type": row["category_type"], "category_color": row["category_color"], "launch_date": row["launch_date"],
+            "modality": row["modality"], "installments": row["installments"]
+        }
+        for row in results
+    ]
+
+def get_transaction_by_id(transaction_id):
+    """Busca uma transação específica pelo seu ID, incluindo o nome da categoria."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    query = """
+        SELECT
+            t.id,
+            t.user_id,
+            t.category_id,
+            t.description,
+            t.value,
+            t.due_date,
+            t.payment_date,
+            t.status,
+            t.modality,
+            t.installments,
+            t.launch_date,
+            c.name AS category_name,
+            c.type AS category_type 
+        FROM
+            transactions t
+        JOIN
+            categories c ON t.category_id = c.id
+        WHERE
+            t.id = ?;
+    """
+    cursor.execute(query, (transaction_id,))
+    transaction = cursor.fetchone()
+    conn.close()
+    return dict(transaction) if transaction else None
+
+def update_transaction(transaction_id, description, value, due_date, payment_date, status, category_id):
+    """Atualiza uma transação existente no banco de dados."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            UPDATE transactions
+            SET description = ?, value = ?, due_date = ?, payment_date = ?, status = ?, category_id = ?
+            WHERE id = ?
+        """, (description, value, due_date, payment_date, status, category_id, transaction_id))
+        conn.commit()
+        if cursor.rowcount > 0:
+            print(f"Transação ID '{transaction_id}' atualizada com sucesso.")
+            return True
+        else:
+            print(f"Nenhuma transação encontrada com ID '{transaction_id}' para atualizar.")
+            return False
+    except sqlite3.Error as e:
+        print(f"Erro ao atualizar transação ID '{transaction_id}': {e}")
+        return False
+    finally:
+        conn.close()
 
 
 # Bloco para inicializar o banco de dados quando este script for executado diretamente (opcional, para teste).

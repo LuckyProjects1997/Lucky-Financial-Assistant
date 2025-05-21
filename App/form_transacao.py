@@ -25,7 +25,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
     def __init__(self, master=None, current_user_id=None, tipo_transacao="Despesa", on_save_callback=None): # Adicionado on_save_callback
         super().__init__(master)
         self.title(f"Nova {tipo_transacao}")
-        self.geometry("450x550")
+        self.geometry("450x650") # Aumentar altura para novos campos
         self.configure(fg_color="#1c1c1c")
         self.lift()
         self.attributes("-topmost", True)
@@ -33,7 +33,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
         self.on_save_callback = on_save_callback # Armazena o callback
 
         self.minsize(400, 500)
-
+        
         self.current_user_id = current_user_id
         self.tipo_transacao = tipo_transacao # Armazena o tipo para uso futuro, se necessário
         self.form_cadastro_ref = None # Referência para a janela de cadastro de categoria
@@ -67,68 +67,94 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
 
         self.load_categories_for_combobox()
 
-        # Frame para Valor e Status (lado a lado)
-        value_status_frame = customtkinter.CTkFrame(main_frame, fg_color="transparent")
-        value_status_frame.grid(row=6, column=0, sticky="ew", padx=0, pady=(0,10))
-        value_status_frame.grid_columnconfigure(0, weight=1) # Coluna para Valor
-        value_status_frame.grid_columnconfigure(1, weight=1) # Coluna para Status
+        # --- Frame para Detalhes Financeiros (Valor, Modalidade, Status, Data) ---
+        financial_details_frame = customtkinter.CTkFrame(main_frame, fg_color="transparent")
+        financial_details_frame.grid(row=6, column=0, sticky="ew", padx=10, pady=(0,10))
+        financial_details_frame.grid_columnconfigure(0, weight=0) # Coluna para Valor
+        financial_details_frame.grid_columnconfigure(1, weight=1) # Coluna para Modalidade, Status, Data (expansível)
 
-        # Valor (dentro do value_status_frame)
-        value_inner_frame = customtkinter.CTkFrame(value_status_frame, fg_color="transparent")
-        value_inner_frame.grid(row=0, column=0, sticky="ew", padx=(10,5))
-        value_label = customtkinter.CTkLabel(value_inner_frame, text="Valor:", font=FONTE_LABEL_FORM)
+        # Valor (coluna 0, row 0 do financial_details_frame)
+        value_container = customtkinter.CTkFrame(financial_details_frame, fg_color="transparent")
+        value_container.grid(row=0, column=0, sticky="nw", padx=(0,10), pady=(0,5))
+
+        value_label = customtkinter.CTkLabel(value_container, text="Valor:", font=FONTE_LABEL_FORM)
         value_label.pack(anchor="w", pady=(5,2))
-        self.value_entry = customtkinter.CTkEntry(value_inner_frame, placeholder_text="Ex: 150.75", height=BOTAO_HEIGHT, font=FONTE_INPUT_FORM, width=170)
-        self.value_entry.pack(anchor="w") # anchor="w" para não expandir horizontalmente
+        self.value_entry = customtkinter.CTkEntry(value_container, placeholder_text="Ex: 150.75", height=BOTAO_HEIGHT, font=FONTE_INPUT_FORM, width=180) # Largura reduzida
+        self.value_entry.pack(anchor="w")
         self.value_entry.bind("<KeyRelease>", self.format_currency_input) # Tenta formatar enquanto digita
 
-        # Status Radio Buttons (dentro do value_status_frame)
-        status_frame = customtkinter.CTkFrame(value_status_frame, fg_color="transparent")
-        status_frame.grid(row=0, column=1, sticky="ew", padx=(5,10), pady=(0,0)) # Alinhado com o valor
-        # Adicionar um label vazio ou ajustar padding para alinhar verticalmente com o campo de valor, se necessário
-        # Ou colocar o label "Status:" acima dos radio buttons
-        status_title_label = customtkinter.CTkLabel(status_frame, text="Status:", font=FONTE_LABEL_FORM)
-        status_title_label.pack(anchor="w", pady=(5,2))
+        # Modalidade (coluna 1, row 0 do financial_details_frame)
+        modality_container = customtkinter.CTkFrame(financial_details_frame, fg_color="transparent")
+        modality_container.grid(row=0, column=1, sticky="new", padx=(0,0), pady=(0,5)) # sticky="new" para expandir horizontalmente
 
-        status_buttons_inner_frame = customtkinter.CTkFrame(status_frame, fg_color="transparent")
-        status_buttons_inner_frame.pack(anchor="w")
+        modality_title_label = customtkinter.CTkLabel(modality_container, text="Modalidade:", font=FONTE_LABEL_FORM)
+        modality_title_label.pack(anchor="w", pady=(5,2)) # Ajustado pady para alinhar com "Valor:"
 
+        modality_buttons_inner_frame = customtkinter.CTkFrame(modality_container, fg_color="transparent")
+        modality_buttons_inner_frame.pack(anchor="w")
 
+        self.modality_var = customtkinter.StringVar(value="À vista")
+        self.modality_radio_avista = customtkinter.CTkRadioButton(modality_buttons_inner_frame, text="À vista", variable=self.modality_var, value="À vista",
+                                                                  font=FONTE_LABEL_FORM, command=self.update_installment_fields_visibility)
+        self.modality_radio_avista.pack(side="left", padx=(0,10))
+        self.modality_radio_parcelado = customtkinter.CTkRadioButton(modality_buttons_inner_frame, text="Parcelado", variable=self.modality_var, value="Parcelado",
+                                                                    font=FONTE_LABEL_FORM, command=self.update_installment_fields_visibility)
+        self.modality_radio_parcelado.pack(side="left", padx=5)
 
-        
+        # Parcelas (condicional, coluna 1, row 1 do financial_details_frame)
+        self.installments_frame = customtkinter.CTkFrame(financial_details_frame, fg_color="transparent")
+        self.installments_frame.grid_columnconfigure(0, weight=0) # Label
+        self.installments_frame.grid_columnconfigure(1, weight=1) # Combobox
+
+        installments_label = customtkinter.CTkLabel(self.installments_frame, text="Parcelas:", font=FONTE_LABEL_FORM)
+        installments_label.grid(row=0, column=0, padx=(0,5), pady=(0,2), sticky="w")
+        installments_values = [str(i) for i in range(2, 25)] # Aumentado de 11 para 25 (para incluir 24)
+        self.installments_combobox = customtkinter.CTkComboBox(self.installments_frame, values=installments_values, height=BOTAO_HEIGHT, font=FONTE_INPUT_FORM, width=60) # Largura reduzida
+        self.installments_combobox.set("2") # Valor padrão se parcelado
+        self.installments_combobox.grid(row=0, column=1, padx=(0,5), pady=0, sticky="w")
+
+        # Frame para Status e Datas (agora filho direto do main_frame)
+        self.status_and_date_frame = customtkinter.CTkFrame(main_frame, fg_color="transparent")
+        self.status_and_date_frame.grid(row=7, column=0, sticky="ew", padx=10, pady=(10,0)) # Nova row=7, abaixo do financial_details_frame
+
+        # --- Elementos de Status (dentro de status_and_date_frame) ---
+        status_elements_container = customtkinter.CTkFrame(self.status_and_date_frame, fg_color="transparent")
+        status_elements_container.pack(anchor="center", pady=(0, 10)) # Centraliza e adiciona padding abaixo
+
+        status_title_label = customtkinter.CTkLabel(status_elements_container, text="Status:", font=FONTE_LABEL_FORM)
+        status_title_label.pack(anchor="w", pady=(5,2)) # Alinhado à esquerda dentro do container
+
+        status_buttons_inner_frame = customtkinter.CTkFrame(status_elements_container, fg_color="transparent")
+        status_buttons_inner_frame.pack(anchor="w") # Alinhado à esquerda dentro do container
 
         self.status_var = customtkinter.StringVar(value="Em Aberto") # Variável para controlar o status
-
-        self.status_radio_aberto = customtkinter.CTkRadioButton(status_frame, text="Em Aberto", variable=self.status_var, value="Em Aberto",
-                                                                font=FONTE_LABEL_FORM, command=self.update_date_fields_visibility) # Removido status_buttons_inner_frame
-        self.status_radio_aberto.pack(in_=status_buttons_inner_frame, side="left", padx=5)
-
-        self.status_radio_pago = customtkinter.CTkRadioButton(status_frame, text="Pago", variable=self.status_var, value="Pago",
-                                                              font=FONTE_LABEL_FORM, command=self.update_date_fields_visibility) # Removido status_buttons_inner_frame
-        self.status_radio_pago.pack(in_=status_buttons_inner_frame, side="left", padx=5)
+        self.status_radio_aberto = customtkinter.CTkRadioButton(status_buttons_inner_frame, text="Em Aberto", variable=self.status_var, value="Em Aberto",
+                                                                font=FONTE_LABEL_FORM, command=self.update_date_fields_visibility)
+        self.status_radio_aberto.pack(side="left", padx=(0,10))
+        self.status_radio_pago = customtkinter.CTkRadioButton(status_buttons_inner_frame, text="Pago", variable=self.status_var, value="Pago",
+                                                              font=FONTE_LABEL_FORM, command=self.update_date_fields_visibility)
+        self.status_radio_pago.pack(side="left", padx=5)
         
-        # Frame ÚNICO para os campos de data (Data Prevista OU Data Pagamento)
-        self.date_input_frame = customtkinter.CTkFrame(main_frame, fg_color="transparent")
-        self.date_input_frame.grid(row=8, column=0, sticky="ew", padx=10, pady=(0,15))
-        self.date_input_frame.grid_columnconfigure(0, weight=1) # Para o entry expandir
+        # --- Container para os campos de data ativos (dentro de status_and_date_frame) ---
+        self.active_date_fields_container = customtkinter.CTkFrame(self.status_and_date_frame, fg_color="transparent")
+        # Este container será empacotado por update_date_fields_visibility
 
         # Data Prevista (elementos criados, mas não necessariamente visíveis)
-        self.due_date_label_ref = customtkinter.CTkLabel(self.date_input_frame, text="Data Prevista:", font=FONTE_LABEL_FORM)
-        self.due_date_entry = customtkinter.CTkEntry(self.date_input_frame, placeholder_text=datetime.date.today().strftime("%d/%m/%Y"), height=BOTAO_HEIGHT, font=FONTE_INPUT_FORM, width=160)
+        self.due_date_label_ref = customtkinter.CTkLabel(self.active_date_fields_container, text="Data Prevista:", font=FONTE_LABEL_FORM)
+        self.due_date_entry = customtkinter.CTkEntry(self.active_date_fields_container, placeholder_text=datetime.date.today().strftime("%d/%m/%Y"), height=BOTAO_HEIGHT, font=FONTE_INPUT_FORM, width=110) # Largura reduzida
         self.due_date_entry.bind("<KeyRelease>", lambda e: self.format_date_entry(e, self.due_date_entry))
-        self.due_date_entry_ref = self.due_date_entry
 
         # Data de Pagamento (elementos criados, mas não necessariamente visíveis)
-        self.payment_date_label_ref = customtkinter.CTkLabel(self.date_input_frame, text="Data Pagamento:", font=FONTE_LABEL_FORM)
-        self.payment_date_entry = customtkinter.CTkEntry(self.date_input_frame, placeholder_text="DD/MM/AAAA", height=BOTAO_HEIGHT, font=FONTE_INPUT_FORM, width=160)
+        self.payment_date_label_ref = customtkinter.CTkLabel(self.active_date_fields_container, text="Data Pagamento:", font=FONTE_LABEL_FORM)
+        self.payment_date_entry = customtkinter.CTkEntry(self.active_date_fields_container, placeholder_text="DD/MM/AAAA", height=BOTAO_HEIGHT, font=FONTE_INPUT_FORM, width=110) # Largura reduzida
         self.payment_date_entry.bind("<KeyRelease>", lambda e: self.format_date_entry(e, self.payment_date_entry))
-        self.payment_date_entry_ref = self.payment_date_entry
 
         self.update_date_fields_visibility() # Chama para configurar o estado inicial dos campos de data
+        self.update_installment_fields_visibility() # Chama para configurar o estado inicial do campo de parcelas
 
         # Frame para os botões Salvar e Fechar
         action_buttons_frame = customtkinter.CTkFrame(main_frame, fg_color="transparent")
-        action_buttons_frame.grid(row=11, column=0, pady=(20,10), sticky="ew") # Ajustado pady e row
+        action_buttons_frame.grid(row=8, column=0, pady=(20,10), sticky="ew") # Nova row=8 (após status_and_date_frame)
         action_buttons_frame.grid_columnconfigure(0, weight=1) # Espaço antes do botão Salvar
         action_buttons_frame.grid_columnconfigure(1, weight=0) # Botão Salvar
         action_buttons_frame.grid_columnconfigure(2, weight=0) # Botão Fechar
@@ -176,6 +202,8 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
         due_date_input = self.due_date_entry.get().strip()
         payment_date_input = self.payment_date_entry.get().strip()
         status = self.status_var.get()
+        modality = self.modality_var.get()
+        installments = None
 
         # Validações básicas
         if not description:
@@ -193,6 +221,16 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
         except ValueError:
             print("Valor inválido. Use apenas números e ponto/vírgula.") # TODO: Mostrar alerta na GUI
             return
+
+        if modality == "Parcelado":
+            installments_str = self.installments_combobox.get()
+            if not installments_str.isdigit() or not (2 <= int(installments_str) <= 48):
+                print("Número de parcelas inválido. Deve ser um número entre 2 e 48.") # TODO: Mostrar alerta na GUI
+                return
+            installments = int(installments_str)
+        elif modality == "À vista":
+            installments = 1 # Ou None, dependendo de como você quer armazenar no DB
+
         
         due_date_db = None
         payment_date_db = None
@@ -234,8 +272,11 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
              return
 
         transaction_id = str(uuid.uuid4())
-
-        success = Database.add_transaction(transaction_id, self.current_user_id, selected_category['id'], description, value, due_date_db, payment_date_db, status)
+        
+        # TODO: A função Database.add_transaction precisará ser atualizada para aceitar 'modality' e 'installments'
+        # Exemplo de como poderia ser a chamada:
+        # success = Database.add_transaction(transaction_id, self.current_user_id, selected_category['id'], description, value, due_date_db, payment_date_db, status, modality, installments)
+        success = Database.add_transaction(transaction_id, self.current_user_id, selected_category['id'], description, value, due_date_db, payment_date_db, status) # Chamada atual
 
         if success:
             print(f"{self.tipo_transacao} salva com sucesso!") # TODO: Mostrar alerta na GUI
@@ -247,6 +288,8 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
             self.due_date_entry.insert(0, datetime.date.today().strftime("%d/%m/%Y")) # Reseta para data atual
             self.payment_date_entry.delete(0, customtkinter.END)
             self.status_var.set("Em Aberto") # Reseta status
+            self.modality_var.set("À vista") # Reseta modalidade
+            self.installments_combobox.set("2")
             self.update_date_fields_visibility() # Atualiza a visibilidade dos campos de data
             self.description_entry.focus() # Foca no primeiro campo
             if self.on_save_callback: # Chama o callback se ele foi fornecido
@@ -272,29 +315,48 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
         else:
             self.form_cadastro_ref.focus() # Se já existir, apenas foca nela
 
+    def update_installment_fields_visibility(self):
+        """Controla a visibilidade do campo de parcelas com base na modalidade."""
+        modality = self.modality_var.get()
+        if modality == "Parcelado":
+            self.installments_frame.grid(row=1, column=1, sticky="ew", padx=(0,0), pady=(0,10)) # Gridding dentro de financial_details_frame
+        else: # À vista
+            self.installments_frame.grid_forget() # Esconde o frame de parcelas
+
 
     def update_date_fields_visibility(self):
         """Controla a visibilidade e o estado dos campos de data com base no status."""
+        # Limpa o container de campos de data ativos e o esconde temporariamente
+        for widget in self.active_date_fields_container.winfo_children():
+            widget.grid_forget() # Usa grid_forget pois os elementos são gridados dentro dele
+        self.active_date_fields_container.pack_forget()
+
         status = self.status_var.get()
         if status == "Pago":
             # Esconde Data Prevista
-            self.due_date_label_ref.grid_forget()
-            self.due_date_entry_ref.grid_forget()
-            # Mostra e habilita Data Pagamento, alinhado à esquerda
-            self.payment_date_label_ref.grid(row=0, column=0, sticky="w", pady=(0,2))
-            self.payment_date_entry_ref.grid(row=1, column=0, sticky="w") # Alterado para sticky="w"
-            self.payment_date_entry_ref.configure(state="normal")
-            if not self.payment_date_entry_ref.get(): # Se estiver vazio, preenche com data atual
-                self.payment_date_entry_ref.insert(0, datetime.date.today().strftime("%d/%m/%Y"))
+            # Configura e mostra Data Pagamento
+            self.payment_date_label_ref.grid(in_=self.active_date_fields_container, row=0, column=0, sticky="w", pady=(0,2), padx=(0,5)) # Alinhado à esquerda
+            self.payment_date_entry.grid(in_=self.active_date_fields_container, row=0, column=1, sticky="w")
+            self.payment_date_entry.configure(state="normal")
+            if not self.payment_date_entry.get(): # Se estiver vazio, preenche com data atual
+                self.payment_date_entry.insert(0, datetime.date.today().strftime("%d/%m/%Y"))
+            # Garante que o campo de data prevista esteja limpo e desabilitado (embora não visível)
+            self.due_date_entry.delete(0, customtkinter.END)
+            self.due_date_entry.configure(state="disabled")
         else: # Em Aberto
-            # Mostra Data Prevista, alinhado à esquerda
-            self.due_date_label_ref.grid(row=0, column=0, sticky="w", pady=(0,2))
-            self.due_date_entry_ref.grid(row=1, column=0, sticky="w") # Alterado para sticky="w"
-            # Esconde e desabilita Data Pagamento
-            self.payment_date_label_ref.grid_forget()
-            self.payment_date_entry_ref.grid_forget()
-            self.payment_date_entry_ref.delete(0, customtkinter.END)
-            self.payment_date_entry_ref.configure(state="disabled")
+            # Configura e mostra Data Prevista
+            self.due_date_label_ref.grid(in_=self.active_date_fields_container, row=0, column=0, sticky="w", pady=(0,2), padx=(0,5)) # Alinhado à esquerda
+            self.due_date_entry.grid(in_=self.active_date_fields_container, row=0, column=1, sticky="w")
+            self.due_date_entry.configure(state="normal")
+            # Garante que o campo de data de pagamento esteja limpo e desabilitado (embora não visível)
+            self.payment_date_entry.delete(0, customtkinter.END)
+            self.payment_date_entry.configure(state="disabled")
+
+        # Configura o grid do container de data ativo para centralizar o label e o entry
+        self.active_date_fields_container.grid_columnconfigure(0, weight=0) # Label
+        self.active_date_fields_container.grid_columnconfigure(1, weight=0) # Entry
+        # Empacota o container de campos de data ativos, centralizando-o
+        self.active_date_fields_container.pack(anchor="center", pady=(5,0))
 
     def format_date_entry(self, event, entry_widget):
         """Formata a entrada de data para DD/MM/AAAA enquanto o usuário digita."""
