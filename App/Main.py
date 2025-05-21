@@ -250,7 +250,7 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
     def abrir_formulario_cadastro_usuario(self, event=None): # event é passado por mousePressEvent
         """Abre o formulário de cadastro de usuário."""
         self.hide() # Esconde a janela de login
-        temp_ctk_root = None # Inicializa para o bloco finally
+        temp_ctk_root = None # Inicializa temp_ctk_root como None
 
         try:
             print("Abrindo formulário de cadastro...")
@@ -259,13 +259,19 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
             temp_ctk_root = customtkinter.CTk() # Cria um root CTk temporário
             temp_ctk_root.withdraw() # Esconde o root temporário
 
+            # Criamos uma referência mutável (lista) para temp_ctk_root
+            # para que o callback possa modificá-la (definir como None após destroy)
+            # Isso ajuda os blocos except a saberem se precisam limpar.
+            active_temp_root_ref = [temp_ctk_root]
+
             # Função a ser chamada quando o formulário de cadastro for fechado
             def on_form_closed_callback():
                 print("Formulário de cadastro fechado via callback.")
-                if temp_ctk_root and temp_ctk_root.winfo_exists():
-                    temp_ctk_root.destroy() # Destrói o root temporário, terminando seu mainloop
+                if active_temp_root_ref[0] and active_temp_root_ref[0].winfo_exists():
+                    active_temp_root_ref[0].destroy() # Destrói o root temporário
+                active_temp_root_ref[0] = None # Sinaliza que foi tratado
 
-            self.form_cadastro_win_ref = FormCadastroUsuarioWindow(master=temp_ctk_root) # Abre o formulário de usuário
+            self.form_cadastro_win_ref = FormCadastroUsuarioWindow(master=active_temp_root_ref[0], on_close_callback=on_form_closed_callback)
             self.form_cadastro_win_ref.on_close_callback = on_form_closed_callback # Define o callback
             # Também lida com o fechamento pelo botão [X] da janela
             self.form_cadastro_win_ref.protocol("WM_DELETE_WINDOW", on_form_closed_callback)
@@ -275,13 +281,25 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         except ImportError:
             print("CustomTkinter não está instalado. Não é possível abrir o formulário de cadastro.")
             QMessageBox.critical(self, "Erro de Importação", "CustomTkinter não está instalado.")
+            # Limpa temp_ctk_root se foi criado antes do erro
+            if active_temp_root_ref and active_temp_root_ref[0]:
+                try:
+                    if active_temp_root_ref[0].winfo_exists(): active_temp_root_ref[0].destroy()
+                except tk.TclError: pass # Ignora se já foi destruído
+                active_temp_root_ref[0] = None
         except Exception as e:
             print(f"Erro ao tentar abrir o formulário de cadastro: {e}")
             QMessageBox.critical(self, "Erro", f"Não foi possível abrir o formulário de cadastro:\n{e}")
+            if active_temp_root_ref and active_temp_root_ref[0]:
+                try:
+                    if active_temp_root_ref[0].winfo_exists(): active_temp_root_ref[0].destroy()
+                except tk.TclError: pass # Ignora se já foi destruído
+                active_temp_root_ref[0] = None
         finally:
-            # Garante que o root temporário seja destruído se ainda existir
-            if temp_ctk_root and temp_ctk_root.winfo_exists():
-                temp_ctk_root.destroy()
+            # O mainloop de temp_ctk_root terminou, o que significa que foi destruído
+            # (pelo callback ou por uma exceção e tratado no bloco except).
+            # Não há necessidade de tentar destruir temp_ctk_root novamente aqui.
+            print("Bloco finally executado após formulário de cadastro.")
             self.show() # Mostra a janela de login novamente
             self.load_users_into_combobox() # Recarrega os usuários, caso um novo tenha sido adicionado
 

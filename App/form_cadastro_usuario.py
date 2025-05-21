@@ -1,7 +1,7 @@
 # form_cadastro_usuario.py
 import customtkinter
 import uuid # Para gerar IDs únicos
-from . import Database # Usando 'Database' com D maiúsculo conforme seu Main.py
+import Database # Usando 'Database' com D maiúsculo conforme seu Main.py
 
 # Definições de fonte padrão para o Formulário de Cadastro de Usuário
 FONTE_FAMILIA = "Segoe UI"

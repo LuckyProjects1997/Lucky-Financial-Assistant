@@ -79,7 +79,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
 
         value_label = customtkinter.CTkLabel(value_container, text="Valor:", font=FONTE_LABEL_FORM)
         value_label.pack(anchor="w", pady=(5,2))
-        self.value_entry = customtkinter.CTkEntry(value_container, placeholder_text="Ex: 150.75", height=BOTAO_HEIGHT, font=FONTE_INPUT_FORM, width=180) # Largura reduzida
+        self.value_entry = customtkinter.CTkEntry(value_container, placeholder_text="Ex: 150.75", height=BOTAO_HEIGHT, font=FONTE_INPUT_FORM, width=100) # Largura ajustada para 70px
         self.value_entry.pack(anchor="w")
         self.value_entry.bind("<KeyRelease>", self.format_currency_input) # Tenta formatar enquanto digita
 
