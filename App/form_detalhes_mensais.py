@@ -2,6 +2,7 @@
 import customtkinter
 import tkinter as tk # Para constantes de alinhamento
 from CTkMessagebox import CTkMessagebox # Para caixas de diálogo de confirmação
+import re # Para remover a informação de parcela da descrição
 from Database import get_transactions_for_month, get_category_summary_for_month, delete_transaction # Importa funções do Database
 from form_consulta_transacao import FormConsultaTransacaoWindow # Importa a nova janela
 
@@ -40,13 +41,19 @@ class FormDetalhesMensaisWindow(customtkinter.CTkToplevel):
         # --- Frame Principal ---
         main_frame = customtkinter.CTkFrame(self, fg_color="transparent")
         main_frame.pack(expand=True, fill="both", padx=20, pady=20)
+        # Configurar grid para o main_frame
+        main_frame.grid_columnconfigure(0, weight=1) # Coluna única para expandir
+        main_frame.grid_rowconfigure(0, weight=0) # Título
+        main_frame.grid_rowconfigure(1, weight=0) # Botões dos meses
+        main_frame.grid_rowconfigure(2, weight=1) # content_splitter_frame (expande verticalmente)
+        main_frame.grid_rowconfigure(3, weight=0) # Botão Fechar
 
         title_label = customtkinter.CTkLabel(main_frame, text=f"Selecione o Mês ({selected_year})", font=FONTE_TITULO_FORM)
-        title_label.pack(pady=(0, 20))
+        title_label.grid(row=0, column=0, pady=(0, 20), sticky="ew")
 
         # Frame para os botões dos meses
         month_buttons_container = customtkinter.CTkFrame(main_frame, fg_color="transparent")
-        month_buttons_container.pack(pady=(0,10), fill="x")
+        month_buttons_container.grid(row=1, column=0, pady=(0,10), sticky="ew")
 
         # Configurar grid para os botões (4 linhas, 3 colunas)
         for i in range(4): # 4 linhas
@@ -72,62 +79,84 @@ class FormDetalhesMensaisWindow(customtkinter.CTkToplevel):
 
         # --- Frame para dividir o conteúdo em duas colunas ---
         content_splitter_frame = customtkinter.CTkFrame(main_frame, fg_color="transparent")
-        content_splitter_frame.pack(expand=True, fill="both", pady=(10,0))
-        content_splitter_frame.grid_columnconfigure(0, weight=2) # Coluna da esquerda (detalhes)
-        content_splitter_frame.grid_columnconfigure(1, weight=1) # Coluna da direita (resumo)
-        content_splitter_frame.grid_rowconfigure(0, weight=1)
+        content_splitter_frame.grid(row=2, column=0, sticky="nsew", pady=(10,0))
+        # Alterado para 1 coluna e 2 linhas para empilhar os frames
+        content_splitter_frame.grid_columnconfigure(0, weight=1) # Única coluna
+        content_splitter_frame.grid_rowconfigure(0, weight=2) # Linha para a lista de transações (mais peso)
+        content_splitter_frame.grid_rowconfigure(1, weight=1) # Linha para o resumo
 
         # --- Coluna da Esquerda: Detalhamento das Transações ---
+        # Agora ocupará a primeira linha do content_splitter_frame
         left_column_container_frame = customtkinter.CTkFrame(content_splitter_frame, fg_color="transparent")
-        left_column_container_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        left_column_container_frame.grid(row=0, column=0, sticky="nsew", padx=0) # Removido padx
         left_column_container_frame.grid_rowconfigure(0, weight=0) # Título e botão Mostrar Todas
         left_column_container_frame.grid_rowconfigure(1, weight=1) # Lista de transações (scrollable)
-        left_column_container_frame.grid_rowconfigure(2, weight=0) # Botões Editar/Excluir
-        left_column_container_frame.grid_columnconfigure(0, weight=1)
+        left_column_container_frame.grid_rowconfigure(2, weight=0) # Botão Fechar
+        left_column_container_frame.grid_columnconfigure(0, weight=1) # Allow the single column to expand
 
         # Título da lista de transações e botão "Mostrar Todas"
-        left_title_frame = customtkinter.CTkFrame(left_column_container_frame, fg_color="transparent")
-        left_title_frame.grid(row=0, column=0, sticky="ew", pady=(0,5))
-        left_title_frame.grid_columnconfigure(0, weight=1) # Label do título
-        left_title_frame.grid_columnconfigure(1, weight=0) # Botão Mostrar Todas
+        self.left_title_frame = customtkinter.CTkFrame(left_column_container_frame, fg_color="transparent") # Frame para o título e botões de filtro
+        self.left_title_frame.grid(row=0, column=0, sticky="ew", pady=(0,5))
+        # Configure columns for the title and filter buttons
+        # Column 0 for the title label, allow it to take available space
+        self.left_title_frame.grid_columnconfigure(0, weight=1) 
+        # Columns for buttons, no weight, they will take their content size
+        self.left_title_frame.grid_columnconfigure(1, weight=0)
+        self.left_title_frame.grid_columnconfigure(2, weight=0)
+        self.left_title_frame.grid_columnconfigure(3, weight=0)
 
-        self.transaction_list_title_label = customtkinter.CTkLabel(left_title_frame, text="Transações do Mês", font=FONTE_LABEL_BOLD)
+        # Placeholder for the actual title label, will be configured in month_detail_selected
+        self.transaction_list_title_label = customtkinter.CTkLabel(self.left_title_frame, text="Transações do Mês", font=FONTE_LABEL_BOLD)
         self.transaction_list_title_label.grid(row=0, column=0, sticky="w")
 
-        self.show_all_button = customtkinter.CTkButton(left_title_frame, text="Mostrar Todas", font=(FONTE_FAMILIA, 10),
+        # Botão Despesas
+        self.despesas_button = customtkinter.CTkButton(self.left_title_frame, text="Despesas", font=(FONTE_FAMILIA, 10),
+                                                       command=self._filter_by_despesa, height=25, width=80,
+                                                       corner_radius=BOTAO_CORNER_RADIUS, fg_color="tomato", text_color="white", hover_color="#CD5C5C") # Vermelho escuro para hover
+        self.despesas_button.grid(row=0, column=1, sticky="e", padx=(0, 5))
+
+        # Botão Proventos
+        self.proventos_button = customtkinter.CTkButton(self.left_title_frame, text="Proventos", font=(FONTE_FAMILIA, 10),
+                                                        command=self._filter_by_provento, height=25, width=80,
+                                                        corner_radius=BOTAO_CORNER_RADIUS, fg_color="green", text_color="white", hover_color="#2E8B57") # Verde escuro para hover
+        self.proventos_button.grid(row=0, column=2, sticky="e", padx=(0, 5))
+
+        # Botão Mostrar Todas
+        self.show_all_button = customtkinter.CTkButton(self.left_title_frame, text="Mostrar Todas", font=(FONTE_FAMILIA, 10),
                                                        command=self._show_all_transactions, height=25, width=100,
                                                        corner_radius=BOTAO_CORNER_RADIUS, fg_color="gray40", hover_color="gray50")
-        self.show_all_button.grid(row=0, column=1, sticky="e", padx=(5,0))
+        self.show_all_button.grid(row=0, column=3, sticky="e", padx=(0,0))
 
-        self.left_detail_scroll_frame = customtkinter.CTkScrollableFrame(left_column_container_frame) # Removido label_text
+        self.left_detail_scroll_frame = customtkinter.CTkScrollableFrame(left_column_container_frame, height=150) # Adicionado height=150
         self.left_detail_scroll_frame.grid(row=1, column=0, sticky="nsew")
-        # Placeholder inicial
+        # Placeholder inicial (mantido)
         self.left_placeholder_label = customtkinter.CTkLabel(self.left_detail_scroll_frame, text="Selecione um mês para ver as transações.", font=FONTE_LABEL_NORMAL, text_color="gray60")
         self.left_placeholder_label.pack(pady=20, padx=10)
+        summary_section_container = customtkinter.CTkFrame(content_splitter_frame, fg_color="transparent") # Container para título e caixa de resumo
+        summary_section_container.grid(row=1, column=0, sticky="nsew", pady=(10, 0)) # Ocupa a segunda linha, expande horizontalmente
 
-        # Botões Editar e Excluir
-        edit_delete_buttons_frame = customtkinter.CTkFrame(left_column_container_frame, fg_color="transparent")
-        edit_delete_buttons_frame.grid(row=2, column=0, sticky="ew", pady=(10,0))
-        self.delete_button = customtkinter.CTkButton(edit_delete_buttons_frame, text="Excluir Selecionadas", command=self._handle_delete_transaction, state="disabled", width=180, height=30, corner_radius=BOTAO_CORNER_RADIUS, fg_color="gray10", hover_color="gray17") # Cor inicial desabilitada
-        self.delete_button.pack(side="left", padx=5) # Ajustar posicionamento se necessário
+        # Título para o Resumo (acima da caixa cinza)
+        self.summary_title_label = customtkinter.CTkLabel(summary_section_container, text="Resumo do Mês", font=FONTE_LABEL_BOLD)
+        self.summary_title_label.pack(anchor="w", pady=(0, 5)) # Empacotado no container, alinhado à esquerda
 
-        # --- Coluna da Direita: Resumo ---
-        self.right_summary_frame = customtkinter.CTkFrame(content_splitter_frame, fg_color="gray17", corner_radius=10) # Cor de fundo para destaque
-        self.right_summary_frame.grid(row=0, column=1, sticky="nsew", padx=(0, 0)) # Removido padx=(5,0)
+        # Frame de conteúdo do Resumo (caixa cinza) - com largura fixa de 370px
+        self.right_summary_frame = customtkinter.CTkFrame(summary_section_container, fg_color="gray17", corner_radius=10, width=370)
+        self.right_summary_frame.pack_propagate(False) # Impede que os widgets filhos alterem o tamanho do frame
+        # Alinhado à esquerda (anchor="w"), preenche verticalmente (fill="y"), não expande horizontalmente (expand=False)
+        self.right_summary_frame.pack(anchor="w", fill="y", expand=False) 
         # Placeholder inicial
-        self.right_placeholder_label = customtkinter.CTkLabel(self.right_summary_frame, text="Selecione um mês para ver o resumo.", font=FONTE_LABEL_NORMAL, text_color="gray60")
+        self.right_placeholder_label = customtkinter.CTkLabel(self.right_summary_frame, text="Selecione um mês.", font=FONTE_LABEL_NORMAL, text_color="gray60")
         self.right_placeholder_label.pack(pady=20, padx=10, expand=True, fill="both")
 
-
-        # Botão Fechar
+        # Botão Fechar - agora filho direto do main_frame, posicionado no final
         close_button = customtkinter.CTkButton(main_frame, text="Fechar", command=self.destroy,
                                                height=30, font=(FONTE_FAMILIA, 12, "bold"),
-                                               corner_radius=BOTAO_CORNER_RADIUS,
-                                               fg_color="gray50", hover_color="gray40")
-        close_button.pack(pady=(10,0), side="bottom")
+                                               corner_radius=BOTAO_CORNER_RADIUS, fg_color="gray50", hover_color="gray40")
+        close_button.grid(row=3, column=0, pady=(20,0), sticky="s") # Posicionado na última linha do grid do main_frame
 
     def month_detail_selected(self, month_name, year, user_id):
         month_number = self.months_list.index(month_name) + 1
+        print(f"DEBUG: month_detail_selected - Mês: {month_name}, Ano: {year}, User ID: {user_id}")
         self.current_month_name_selected = month_name # Salva para recarregar
 
         # Limpar placeholders e conteúdo anterior
@@ -140,19 +169,20 @@ class FormDetalhesMensaisWindow(customtkinter.CTkToplevel):
             widget.destroy()
 
         self.all_transactions_for_month = get_transactions_for_month(user_id, year, month_number)
-        self.selected_transaction_ids.clear() # Limpa seleções anteriores
-        self.current_filter_type = None # Reseta o filtro
+        # self.selected_transaction_ids.clear() # Não é mais necessário
+        self.current_filter_type = None 
         self._display_transactions(self.all_transactions_for_month)
         self._update_action_buttons_state()
 
         self.transaction_list_title_label.configure(text=f"Transações de {month_name}")
+        self.summary_title_label.configure(text=f"Resumo de {month_name}") # Atualiza o novo título do resumo
 
         # --- Popular Coluna da Direita (Resumo) ---
         summary_data = get_category_summary_for_month(user_id, year, month_number)
         total_despesas = 0
         total_proventos = 0
 
-        customtkinter.CTkLabel(self.right_summary_frame, text=f"Resumo de {month_name}", font=FONTE_LABEL_BOLD).pack(pady=10)
+        # O título do resumo agora está fora do self.right_summary_frame
 
         if not summary_data:
             customtkinter.CTkLabel(self.left_detail_scroll_frame, text="Nenhuma transação encontrada para este mês.", font=FONTE_LABEL_NORMAL, text_color="gray60").pack(pady=20)
@@ -204,18 +234,22 @@ class FormDetalhesMensaisWindow(customtkinter.CTkToplevel):
         # Cabeçalhos
         header_frame = customtkinter.CTkFrame(self.left_detail_scroll_frame, fg_color="transparent")
         header_frame.pack(fill="x", pady=(5,2))
-        header_frame.grid_columnconfigure(0, weight=0) # Checkbox (Sel.)
-        header_frame.grid_columnconfigure(1, weight=2) # Data
-        header_frame.grid_columnconfigure(2, weight=4) # Descrição
-        header_frame.grid_columnconfigure(3, weight=3) # Categoria
-        header_frame.grid_columnconfigure(4, weight=2) # Valor
-        header_frame.grid_columnconfigure(5, weight=1) # Status
-        customtkinter.CTkLabel(header_frame, text="Sel.", font=FONTE_LABEL_BOLD).grid(row=0, column=0, sticky="w", padx=(5,2))
-        customtkinter.CTkLabel(header_frame, text="Data", font=FONTE_LABEL_BOLD).grid(row=0, column=1, sticky="w", padx=2)
-        customtkinter.CTkLabel(header_frame, text="Descrição", font=FONTE_LABEL_BOLD).grid(row=0, column=2, sticky="ew", padx=2)
-        customtkinter.CTkLabel(header_frame, text="Categoria", font=FONTE_LABEL_BOLD).grid(row=0, column=3, sticky="ew", padx=2)
-        customtkinter.CTkLabel(header_frame, text="Valor", font=FONTE_LABEL_BOLD).grid(row=0, column=4, sticky="e", padx=2)
-        customtkinter.CTkLabel(header_frame, text="Status", font=FONTE_LABEL_BOLD).grid(row=0, column=5, sticky="w", padx=2)
+        # Configuração de 7 colunas para os cabeçalhos
+        header_frame.grid_columnconfigure(0, weight=4)  # Descrição (mais peso)
+        header_frame.grid_columnconfigure(1, weight=3)  # Categoria
+        header_frame.grid_columnconfigure(2, weight=2)  # Modalidade
+        header_frame.grid_columnconfigure(3, weight=2)  # Valor Parcela
+        header_frame.grid_columnconfigure(4, weight=2)  # Valor Total
+        header_frame.grid_columnconfigure(5, weight=1)  # Parcela
+        header_frame.grid_columnconfigure(6, weight=1)  # Status
+
+        customtkinter.CTkLabel(header_frame, text="Descrição", font=FONTE_LABEL_BOLD, anchor="w").grid(row=0, column=0, sticky="ew", padx=(5, 10)) # Aumentado padx direito
+        customtkinter.CTkLabel(header_frame, text="Categoria", font=FONTE_LABEL_BOLD, anchor="w").grid(row=0, column=1, sticky="ew", padx=2)
+        customtkinter.CTkLabel(header_frame, text="Modalidade", font=FONTE_LABEL_BOLD, anchor="w").grid(row=0, column=2, sticky="ew", padx=2)
+        customtkinter.CTkLabel(header_frame, text="V. Parcela", font=FONTE_LABEL_BOLD, anchor="e").grid(row=0, column=3, sticky="ew", padx=2)
+        customtkinter.CTkLabel(header_frame, text="V. Total", font=FONTE_LABEL_BOLD, anchor="e").grid(row=0, column=4, sticky="ew", padx=(2, 10)) # Aumentado padx direito
+        customtkinter.CTkLabel(header_frame, text="Parcela", font=FONTE_LABEL_BOLD, anchor="w").grid(row=0, column=5, sticky="ew", padx=2)
+        customtkinter.CTkLabel(header_frame, text="Status", font=FONTE_LABEL_BOLD, anchor="w").grid(row=0, column=6, sticky="ew", padx=2)
 
         for trans in transactions_to_display:
             row_frame_fg_color = "transparent"
@@ -224,50 +258,46 @@ class FormDetalhesMensaisWindow(customtkinter.CTkToplevel):
             if trans['category_type'] == 'Provento':
                 text_color_val = "green"
             elif trans['category_type'] == 'Despesa':
-                text_color_val = "tomato"
-            else:
-                print(f"DEBUG: Tipo de categoria desconhecido: {trans['category_type']}")
-                row_frame_fg_color = "gray10"
+                text_color_val = "tomato" # Laranja avermelhado
 
             row_frame = customtkinter.CTkFrame(self.left_detail_scroll_frame, fg_color=row_frame_fg_color, corner_radius=3)
             row_frame.pack(fill="x", pady=1, padx=2)
-             # Configuração de colunas para os elementos dentro de row_frame
-            row_frame.grid_columnconfigure(0, weight=0)  # Checkbox (Sel.)
-            row_frame.grid_columnconfigure(1, weight=2)  # Data Venc.
-            row_frame.grid_columnconfigure(2, weight=4)  # Descrição
-            row_frame.grid_columnconfigure(3, weight=3)  # Categoria
-            row_frame.grid_columnconfigure(4, weight=1)  # Parcelas
-            row_frame.grid_columnconfigure(5, weight=2)  # Valor
+            # Configuração de 7 colunas para os dados da transação
+            row_frame.grid_columnconfigure(0, weight=4)  # Descrição
+            row_frame.grid_columnconfigure(1, weight=3)  # Categoria
+            row_frame.grid_columnconfigure(2, weight=2)  # Modalidade
+            row_frame.grid_columnconfigure(3, weight=2)  # Valor Parcela
+            row_frame.grid_columnconfigure(4, weight=2)  # Valor Total
+            row_frame.grid_columnconfigure(5, weight=1)  # Parcela
             row_frame.grid_columnconfigure(6, weight=1)  # Status
-            row_frame.grid_columnconfigure(7, weight=2)  # Data Lanç.
 
-            # Checkbox para seleção
-            checkbox_var = customtkinter.StringVar(value="off")
-            checkbox = customtkinter.CTkCheckBox(row_frame, text="", variable=checkbox_var, onvalue="on", offvalue="off",
-                                                 command=lambda t_id=trans['id'], var=checkbox_var: self._toggle_selection(t_id, var),
-                                                 width=20) 
-            checkbox.grid(row=0, column=0, sticky="w", padx=(5,2)) # Padronizado padx
-            if trans['id'] in self.selected_transaction_ids: # Mantém estado do checkbox ao redesenhar
-                checkbox_var.set("on")
+            original_description = trans['description']
+            display_description = re.sub(r'\s*\(\d+/\d+\)$', '', original_description)
+            description_label = customtkinter.CTkLabel(row_frame, text=display_description, font=FONTE_LABEL_PEQUENA, anchor="w", cursor="hand2")
+            description_label.grid(row=0, column=0, sticky="ew", padx=(5, 10)) # Aumentado padx direito
 
-            # Labels dentro do row_frame
-            # Tornar os labels clicáveis também, ou o frame inteiro
-            due_date_label = customtkinter.CTkLabel(row_frame, text=trans.get('due_date', 'N/A'), font=FONTE_LABEL_PEQUENA, cursor="hand2")
-            due_date_label.grid(row=0, column=1, sticky="w", padx=2)
-            description_label = customtkinter.CTkLabel(row_frame, text=trans['description'], font=FONTE_LABEL_PEQUENA, anchor="w", cursor="hand2")
-            description_label.grid(row=0, column=2, sticky="ew", padx=2)# Categoria sem cor de fundo, usa cor de texto padrão
             cat_label = customtkinter.CTkLabel(row_frame, text=trans['category_name'], font=FONTE_LABEL_PEQUENA, corner_radius=3, padx=3, anchor="w", cursor="hand2")
-            cat_label.grid(row=0, column=3, sticky="ew", padx=2) # Alterado para sticky="ew"
-            customtkinter.CTkLabel(row_frame, text=trans.get('installments', '-'), font=FONTE_LABEL_PEQUENA, cursor="hand2").grid(row=0, column=4, sticky="w", padx=2)
-            customtkinter.CTkLabel(row_frame, text=f"R$ {trans['value']:.2f}", font=FONTE_LABEL_PEQUENA, text_color=text_color_val, cursor="hand2").grid(row=0, column=5, sticky="e", padx=2)
-            customtkinter.CTkLabel(row_frame, text=trans.get('status', 'N/A'), font=FONTE_LABEL_PEQUENA, cursor="hand2").grid(row=0, column=6, sticky="w", padx=2)
-            customtkinter.CTkLabel(row_frame, text=trans.get('launch_date', 'N/A'), font=FONTE_LABEL_PEQUENA, cursor="hand2").grid(row=0, column=7, sticky="w", padx=2)
+            cat_label.grid(row=0, column=1, sticky="ew", padx=2)
+            customtkinter.CTkLabel(row_frame, text=trans.get('modality', 'N/A'), font=FONTE_LABEL_PEQUENA, anchor="w", cursor="hand2").grid(row=0, column=2, sticky="ew", padx=2)
+            customtkinter.CTkLabel(row_frame, text=f"R$ {trans['value']:.2f}", font=FONTE_LABEL_PEQUENA, text_color=text_color_val, anchor="e", cursor="hand2").grid(row=0, column=3, sticky="ew", padx=2)
             
-            # Bind click event to the entire row_frame
+            valor_parcela = trans['value']
+            installments_str = trans.get('installments', "1/1")
+            total_installments_num = 1
+            if installments_str and "/" in installments_str:
+                try:
+                    total_installments_num = int(installments_str.split('/')[1])
+                except (ValueError, IndexError):
+                    total_installments_num = 1 # Fallback
+            
+            valor_total_transacao = valor_parcela * total_installments_num
+            customtkinter.CTkLabel(row_frame, text=f"R$ {valor_total_transacao:.2f}", font=FONTE_LABEL_PEQUENA, text_color=text_color_val, anchor="e", cursor="hand2").grid(row=0, column=4, sticky="ew", padx=(2, 10)) # Aumentado padx direito
+            customtkinter.CTkLabel(row_frame, text=trans.get('installments', '-'), font=FONTE_LABEL_PEQUENA, anchor="w", cursor="hand2").grid(row=0, column=5, sticky="ew", padx=2)
+            customtkinter.CTkLabel(row_frame, text=trans.get('status', 'N/A'), font=FONTE_LABEL_PEQUENA, anchor="w", cursor="hand2").grid(row=0, column=6, sticky="ew", padx=2)
+            
             row_frame.bind("<Button-1>", lambda event, t_id=trans['id']: self._open_consulta_transacao(t_id))
-            for child in row_frame.winfo_children(): # Bind para os filhos também, exceto o checkbox
-                if not isinstance(child, customtkinter.CTkCheckBox):
-                    child.bind("<Button-1>", lambda event, t_id=trans['id']: self._open_consulta_transacao(t_id))
+            for child in row_frame.winfo_children():
+                child.bind("<Button-1>", lambda event, t_id=trans['id']: self._open_consulta_transacao(t_id))
 
     def _toggle_selection(self, transaction_id, checkbox_var):
         """
@@ -285,33 +315,29 @@ class FormDetalhesMensaisWindow(customtkinter.CTkToplevel):
         self.current_filter_type = "Despesa"
         filtered_transactions = [t for t in self.all_transactions_for_month if t['category_type'] == "Despesa"]
         self._display_transactions(filtered_transactions)
-        self.selected_transaction_ids.clear() # Limpa seleção ao filtrar
-        self._update_action_buttons_state()
+        # self.selected_transaction_ids.clear() # Não é mais necessário
 
     def _filter_by_provento(self, event=None):
         self.current_filter_type = "Provento"
         filtered_transactions = [t for t in self.all_transactions_for_month if t['category_type'] == "Provento"]
         self._display_transactions(filtered_transactions)
-        self.selected_transaction_ids.clear()
-        self._update_action_buttons_state()
-
+        # self.selected_transaction_ids.clear() # Não é mais necessário
+        # self._update_action_buttons_state() # Não é mais necessário
     def _show_all_transactions(self, event=None):
         self.current_filter_type = None
         self._display_transactions(self.all_transactions_for_month)
-        self.selected_transaction_ids.clear()
-        self._update_action_buttons_state()
-
+        # self.selected_transaction_ids.clear() # Não é mais necessário
+        # self._update_action_buttons_state() # Não é mais necessário
     def _update_action_buttons_state(self):
-        if self.selected_transaction_ids:
-            self.delete_button.configure(state="normal", fg_color="#2196F3", hover_color="#1A78C2") # Azul quando habilitado
-        else:
-            self.delete_button.configure(state="disabled", fg_color="gray10", hover_color="gray17") # Cinza escuro quando desabilitado
+        # Este método não é mais necessário pois o botão de excluir foi removido
+        pass
 
     def _handle_delete_transaction(self):
+        # Este método não é mais chamado pelo botão, mas mantido caso seja útil em outro lugar.
         if not self.selected_transaction_ids:
             CTkMessagebox(title="Nenhuma Seleção", message="Nenhuma transação selecionada para excluir.", icon="warning", master=self)
             return
-        
+
         num_selected = len(self.selected_transaction_ids)
         item_text = "transação selecionada" if num_selected == 1 else f"{num_selected} transações selecionadas"
 
@@ -337,18 +363,24 @@ class FormDetalhesMensaisWindow(customtkinter.CTkToplevel):
             elif failed_ids:
                  CTkMessagebox(title="Falha na Exclusão", message=f"Nenhuma transação pôde ser excluída. Falha para IDs: {', '.join(failed_ids)}", icon="cancel", master=self)
             
-            self._refresh_after_action()
+            self._refresh_after_action() # Recarrega a lista após exclusão
 
     def _refresh_after_action(self):
         """Recarrega os dados do mês atual após uma ação como editar ou excluir."""
+        print("DEBUG DetalhesMensais: _refresh_after_action called.")
         if self.current_month_name_selected:
+            print(f"DEBUG DetalhesMensais: Refreshing for month: {self.current_month_name_selected}, year: {self.selected_year}")
             self.month_detail_selected(self.current_month_name_selected, self.selected_year, self.current_user_id)
+        # Notifica o Dashboard (master) para atualizar seus dados também
+        if self.master and hasattr(self.master, '_refresh_dashboard_data'):
+            print("DEBUG DetalhesMensais: Calling master._refresh_dashboard_data()")
+            self.master._refresh_dashboard_data()
 
     def _open_consulta_transacao(self, transaction_id):
         print(f"Abrindo consulta para transação ID: {transaction_id}")
         if self.form_consulta_transacao_window is None or not self.form_consulta_transacao_window.winfo_exists():
             self.form_consulta_transacao_window = FormConsultaTransacaoWindow(
-                master=self, transaction_id=transaction_id, on_save_callback=self._refresh_after_action
+                master=self, transaction_id=transaction_id, on_action_completed_callback=self._refresh_after_action
             )
             self.form_consulta_transacao_window.focus()
         else:

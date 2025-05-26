@@ -53,11 +53,12 @@ class Dashboard(customtkinter.CTk):
         self.grid_columnconfigure(1, weight=1) # Second column for pie chart container
         self.grid_rowconfigure(0, weight=0) # Title row
         self.grid_rowconfigure(1, weight=0) # Row for month buttons
-        self.grid_rowconfigure(2, weight=1) # Row for monthly expenses table (should expand)
-        self.grid_rowconfigure(3, weight=1) # Row for current list and pie chart (takes remaining space)
+        self.grid_rowconfigure(2, weight=1) # Row for list_container_frame (monthly details)
+        self.grid_rowconfigure(3, weight=1) # Row for pie_chart_container_frame (monthly pie)
         self.grid_rowconfigure(4, weight=0) # Row for "Resumo Anual" title
-        self.grid_rowconfigure(5, weight=1) # Row for annual summary list and pie chart (takes remaining space)
-        self.grid_rowconfigure(6, weight=0) # Row for action buttons and logo
+        self.grid_rowconfigure(5, weight=1) # Row for annual_list_container_frame (TABLES) and annual_pie_chart_container_frame
+        self.grid_rowconfigure(6, weight=0) # NEW: Row for annual_totals_display_frame (TOTALS)
+        self.grid_rowconfigure(7, weight=0) # Row for action buttons and logo
 
 
         # --- Header Frame (Title and Year Selector) ---
@@ -143,14 +144,20 @@ class Dashboard(customtkinter.CTk):
         self.annual_summary_title_label = customtkinter.CTkLabel(self, text="Resumo Anual", font=FONTE_TITULO_GRANDE)
         self.annual_summary_title_label.grid(row=4, column=0, columnspan=2, pady=(20, 5), padx=20, sticky="w")
 
-        # --- Left Container for Annual Summary List ---
-        # Alterado de CTkScrollableFrame para CTkFrame para conter tabelas e totais
-        self.annual_list_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
-        self.annual_list_container_frame.grid(row=5, column=0, padx=(20,10), pady=(10, 20), sticky="nsew")
-        # Configurar grid para o annual_list_container_frame gerenciar seus filhos (tabelas e totais)
-        self.annual_list_container_frame.grid_rowconfigure(0, weight=1)  # Linha para o frame das tabelas (expansível)
-        self.annual_list_container_frame.grid_rowconfigure(1, weight=0)  # Linha para o frame dos totais
+        # --- Left Container for Annual Summary List (TABLES ONLY) ---
+        self.annual_list_container_frame = customtkinter.CTkFrame(self, corner_radius=10, fg_color=COR_CONTAINER_INTERNO) # No border_width
+        self.annual_list_container_frame.grid(row=5, column=0, padx=(20,10), pady=(10, 0), sticky="nsew") # pady bottom reduced
+        # Configurar grid para o annual_list_container_frame gerenciar seu filho (tables_display_frame)
+        self.annual_list_container_frame.grid_rowconfigure(0, weight=1)  # Single row for tables_display_frame
         self.annual_list_container_frame.grid_columnconfigure(0, weight=1) # Coluna única para expandir os frames internos
+
+        # --- New Container for Annual Summary TOTALS (WITH BORDER) ---
+        self.annual_totals_display_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
+        self.annual_totals_display_frame.grid(row=6, column=0, padx=(20,10), pady=(5, 20), sticky="w") # Changed sticky to "w"
+        # Configure grid for annual_totals_display_frame to manage its children (the totals_summary_frame)
+        self.annual_totals_display_frame.grid_rowconfigure(0, weight=0) # For totals_summary_frame
+        self.annual_totals_display_frame.grid_columnconfigure(0, weight=0) # Changed weight to 0
+
         self.load_annual_category_summaries() # Carrega os resumos anuais AQUI
 
         # --- Right Container for Annual Summary Pie Chart ---
@@ -161,8 +168,8 @@ class Dashboard(customtkinter.CTk):
 
         # --- Bottom Container for Action Buttons and Logo ---
         self.actions_container_frame = customtkinter.CTkFrame(self, corner_radius=0, fg_color="transparent") # Sem cantos e transparente
-        # Aumentado o pady inferior para criar mais espaço abaixo dos botões.
-        self.actions_container_frame.grid(row=6, column=0, columnspan=2, padx=0, pady=(10,20), sticky="nsew") # Movido para row 6
+        self.actions_container_frame.grid(row=7, column=0, columnspan=2, padx=0, pady=(10,20), sticky="nsew") # Movido para row 7
+
 
         # Frame interno para centralizar os botões
         buttons_inner_frame = customtkinter.CTkFrame(self.actions_container_frame, fg_color="transparent")
@@ -313,8 +320,11 @@ class Dashboard(customtkinter.CTk):
 
 
     def load_annual_category_summaries(self):
-        # Limpa o conteúdo anterior do list_container_frame
+        # Limpa o conteúdo anterior do annual_list_container_frame (tabelas)
         for widget in self.annual_list_container_frame.winfo_children():
+            widget.destroy()
+        # Limpa o conteúdo anterior do annual_totals_display_frame (totais)
+        for widget in self.annual_totals_display_frame.winfo_children():
             widget.destroy()
 
         selected_year = self.year_combobox.get()
@@ -322,11 +332,12 @@ class Dashboard(customtkinter.CTk):
             message = "Selecione um usuário e ano para o resumo anual."
             no_data_label = customtkinter.CTkLabel(self.annual_list_container_frame, text=message, font=FONTE_NORMAL, text_color="gray50")
             no_data_label.pack(pady=20, padx=10)
+            customtkinter.CTkLabel(self.annual_totals_display_frame, text="", font=FONTE_NORMAL).pack() # Placeholder for totals frame
             return
 
         # Frame para conter as duas tabelas (Despesa e Provento) lado a lado
-        tables_display_frame = customtkinter.CTkFrame(self.annual_list_container_frame, fg_color="transparent")
-        tables_display_frame.grid(row=0, column=0, sticky="nsew", pady=(0,10))
+        tables_display_frame = customtkinter.CTkFrame(self.annual_list_container_frame, fg_color="transparent") # Child of annual_list_container_frame
+        tables_display_frame.grid(row=0, column=0, sticky="nsew") # pady removed, parent handles
         tables_display_frame.grid_columnconfigure(0, weight=1)  # Coluna para tabela de Despesas
         tables_display_frame.grid_columnconfigure(1, weight=1)  # Coluna para tabela de Proventos
         tables_display_frame.grid_rowconfigure(0, weight=1)     # Linha única para as tabelas expandirem verticalmente
@@ -391,9 +402,9 @@ class Dashboard(customtkinter.CTk):
         # Popular tabela de Proventos e obter total
         total_proventos = create_summary_section(provento_scroll_frame, "Provento")
 
-        # Frame para exibir os totais abaixo das tabelas
-        totals_summary_frame = customtkinter.CTkFrame(self.annual_list_container_frame, fg_color="transparent")
-        totals_summary_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(10, 5)) # pady inferior ajustado
+        # Frame para exibir os totais - AGORA FILHO DE self.annual_totals_display_frame
+        totals_summary_frame = customtkinter.CTkFrame(self.annual_totals_display_frame, fg_color="transparent")
+        totals_summary_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(5, 5)) # pady ajustado para novo pai
         # Configurar colunas para alinhar texto à esquerda e valor à esquerda da sua coluna
         totals_summary_frame.grid_columnconfigure(0, weight=0) # Coluna para o texto do label (e.g., "Total Proventos:")
         totals_summary_frame.grid_columnconfigure(1, weight=1) # Coluna para o valor (e.g., "R$ 100.00")

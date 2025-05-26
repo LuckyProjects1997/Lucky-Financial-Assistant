@@ -203,6 +203,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
         payment_date_input = self.payment_date_entry.get().strip()
         status = self.status_var.get()
         modality = self.modality_var.get()
+        print(f"DEBUG form_transacao: Modality to be saved: '{modality}'")
         installments = None
 
         # Validações básicas
@@ -217,9 +218,13 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
             return
 
         try:
-            value = float(value_str.replace(",", "."))
+            # Primeiro, remove os pontos (separadores de milhar)
+            value_str_no_thousands = value_str.replace(".", "")
+            # Depois, substitui a vírgula (separador decimal) por um ponto
+            value_str_for_float = value_str_no_thousands.replace(",", ".")
+            value = float(value_str_for_float)
         except ValueError:
-            print("Valor inválido. Use apenas números e ponto/vírgula.") # TODO: Mostrar alerta na GUI
+            print(f"Valor inválido '{value_str}'. Após tratamento: '{value_str_for_float}'. Não foi possível converter para float.") # TODO: Mostrar alerta na GUI
             return
 
         if modality == "Parcelado":
@@ -273,11 +278,19 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
 
         transaction_id = str(uuid.uuid4())
         
-        # TODO: A função Database.add_transaction precisará ser atualizada para aceitar 'modality' e 'installments'
-        # Exemplo de como poderia ser a chamada:
-        # success = Database.add_transaction(transaction_id, self.current_user_id, selected_category['id'], description, value, due_date_db, payment_date_db, status, modality, installments)
-        success = Database.add_transaction(transaction_id, self.current_user_id, selected_category['id'], description, value, due_date_db, payment_date_db, status) # Chamada atual
-
+        # Chamada atualizada para Database.add_transaction, incluindo modality e num_installments
+        success = Database.add_transaction(
+            transaction_id_base=transaction_id,
+            user_id=self.current_user_id,
+            category_id=selected_category['id'],
+            original_description=description,
+            total_value=value,
+            initial_due_date=due_date_db,
+            initial_payment_date=payment_date_db,
+            initial_status=status,
+            modality=modality,
+            num_installments=installments # Passa o número de parcelas calculado
+        )
         if success:
             print(f"{self.tipo_transacao} salva com sucesso!") # TODO: Mostrar alerta na GUI
             # Limpar campos
@@ -378,36 +391,42 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
         entry_widget.insert(0, new_text)
         entry_widget.icursor(len(new_text)) # Move o cursor para o final
 
-    def format_currency_input(self, event):
-        """Tenta formatar o valor como moeda (simples, sem separador de milhar por enquanto)."""
+    def format_currency_input(self, event=None):
+        """Formata o valor como moeda (R$ X.XXX,XX) enquanto o usuário digita apenas números."""
         entry_widget = self.value_entry
         current_text = entry_widget.get()
-        cursor_pos = entry_widget.index(customtkinter.INSERT)
 
-        # Remove tudo exceto dígitos e um separador decimal (vírgula ou ponto)
-        clean_text = ""
-        decimal_separator_found = False
-        for char in current_text:
-            if char.isdigit():
-                clean_text += char
-            elif char in [',', '.'] and not decimal_separator_found:
-                clean_text += ',' # Padroniza para vírgula para a lógica de formatação
-                decimal_separator_found = True
-        
-        # Limita a duas casas decimais
-        if ',' in clean_text:
-            parts = clean_text.split(',')
-            integer_part = parts[0]
-            decimal_part = parts[1][:2] if len(parts) > 1 else ""
-            clean_text = f"{integer_part},{decimal_part}"
+        # 1. Extrair apenas os dígitos do texto atual
+        digits_only = "".join(filter(str.isdigit, current_text))
 
-        if clean_text != current_text:
-            entry_widget.delete(0, customtkinter.END)
-            entry_widget.insert(0, clean_text)
-            # Tenta restaurar a posição do cursor de forma simples
-            # Isso pode não ser perfeito para todas as edições, mas ajuda.
-            new_cursor_pos = cursor_pos - (len(current_text) - len(clean_text))
-            entry_widget.icursor(max(0, new_cursor_pos))
+        # 2. Lógica de formatação baseada no número de dígitos
+        if not digits_only:
+            formatted_value = "0,00"
+        elif len(digits_only) == 1: # Ex: 2 -> 0,02
+            formatted_value = f"0,0{digits_only}"
+        elif len(digits_only) == 2: # Ex: 25 -> 0,25
+            formatted_value = f"0,{digits_only}"
+        else: # len(digits_only) > 2. Ex: 250 -> 2,50; 250099 -> 2.500,99
+            decimal_part = digits_only[-2:]
+            integer_part_str = digits_only[:-2]
+
+            # Formatar parte inteira com separadores de milhar (ponto)
+            # Remove zeros à esquerda da parte inteira, a menos que seja apenas "0"
+            integer_part_str_cleaned = integer_part_str.lstrip('0')
+            if not integer_part_str_cleaned: # Se ficou vazio após lstrip (ex: "00" se tornou "")
+                integer_part_str_cleaned = "0"
+            
+            parts = []
+            while integer_part_str_cleaned:
+                parts.append(integer_part_str_cleaned[-3:])
+                integer_part_str_cleaned = integer_part_str_cleaned[:-3]
+            
+            formatted_integer_part = ".".join(reversed(parts)) if parts else "0"
+            formatted_value = f"{formatted_integer_part},{decimal_part}"
+
+        entry_widget.delete(0, customtkinter.END)
+        entry_widget.insert(0, formatted_value)
+        entry_widget.icursor(len(formatted_value)) # Move o cursor para o final
 
 if __name__ == '__main__':
     app = customtkinter.CTk()

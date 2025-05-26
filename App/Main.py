@@ -5,6 +5,7 @@ import sys # Usado para sair da aplicação.
 import os # Para interagir com o sistema operacional (reiniciar)
 import subprocess # Para iniciar um novo processo (reiniciar)
 from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QComboBox, QMessageBox,
+                               # Adicionado tk para tk.TclError
                                QPushButton, QVBoxLayout, QHBoxLayout, QFrame) # Widgets e layouts.
 from PySide6.QtGui import QPixmap, QPainter, QColor, QFont # Para imagens, pintura, cores e fontes.
 from PySide6.QtCore import Qt, QSize # Para alinhamentos, tamanhos, etc.
@@ -15,6 +16,7 @@ from Dashboard import Dashboard
 # from form_cadastro import FormCadastroWindow # Removido
 from form_cadastro_usuario import FormCadastroUsuarioWindow # Importa o formulário de usuário
 # Importa as funções do nosso novo módulo de banco de dados.
+import tkinter as tk # Adicionado para tk.TclError
 import Database
 
 # Índice de Telas e Containers:
@@ -310,12 +312,12 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
         
         users = Database.get_all_users() # Busca todos os usuários do banco.
         if not users:
-            self.combo_usuario.addItem(" ", None) # Adiciona item placeholder se não houver usuários.
+            self.combo_usuario.addItem("     ", None) # Adiciona item placeholder se não houver usuários.
         else:
             self.combo_usuario.addItem("     Selecionar", None) # Adiciona um item inicial "Selecione".
             for user in users:
                 # Adiciona o nome do usuário como texto e o ID como dado associado.
-                self.combo_usuario.addItem(user["name"], user["id"])
+                self.combo_usuario.addItem(f"     {user['name']}", user["id"])
         print(f"{len(users)} usuários carregados.")
 
 def main():

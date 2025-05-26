@@ -187,6 +187,7 @@ def add_transaction(transaction_id_base, user_id, category_id, original_descript
     if launch_date is None:
         launch_date = datetime.date.today().strftime("%Y-%m-%d")
 
+    print(f"DEBUG Database.add_transaction: Received modality: '{modality}', num_installments: {num_installments}")
     try:
         all_successful = True # Initialize all_successful here
         if modality == "Parcelado" and num_installments and num_installments > 1:
@@ -206,8 +207,12 @@ def add_transaction(transaction_id_base, user_id, category_id, original_descript
                 if parcel_number == 1:
                     status_for_installment = initial_status
                     payment_date_for_installment = initial_payment_date
-                    due_date_for_installment_str = initial_due_date
                 else:
+                    # Para parcelas futuras (2/N em diante), o status é SEMPRE 'Em Aberto'
+                    # e a data de pagamento é SEMPRE NULL, independentemente do status inicial.
+                    # A data de vencimento é calculada para o próximo mês.
+                    # A data de vencimento da primeira parcela é a initial_due_date.
+                    
                     status_for_installment = "Em Aberto" # Parcelas futuras são em aberto
                     payment_date_for_installment = None
                     # Calcula a data de vencimento para as parcelas subsequentes
@@ -221,8 +226,16 @@ def add_transaction(transaction_id_base, user_id, category_id, original_descript
                         due_date_for_installment_obj = (due_date_for_installment_obj.replace(day=1) - datetime.timedelta(days=1))
                     
                     due_date_for_installment_str = due_date_for_installment_obj.strftime("%Y-%m-%d")
-                    current_due_date_obj = due_date_for_installment_obj # Atualiza para a próxima iteração
+                    current_due_date_obj = due_date_for_installment_obj # Update for the next iteration's base
 
+                # A data de vencimento da primeira parcela é sempre a initial_due_date
+                if parcel_number == 1:
+                     due_date_for_installment_str = initial_due_date
+                     # current_due_date_obj is already set from initial_due_date before the loop
+                     # and will be used as the base for the next parcel's calculation if num_installments > 1
+                # else: # This was part of the previous structure, now current_due_date_obj is updated inside the main else
+                #    current_due_date_obj = due_date_for_installment_obj # This was the correct placement for update
+                
                 cursor.execute("""
                     INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date, status, modality, installments, launch_date)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -260,24 +273,45 @@ def add_transaction(transaction_id_base, user_id, category_id, original_descript
         conn.close()
 
 def delete_transaction(transaction_id):
-    """Exclui uma transação do banco de dados pelo seu ID."""
+    """Exclui uma transação do banco de dados.
+    Se a transação for parte de um parcelamento, todas as parcelas relacionadas são excluídas.
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
+    deleted_count = 0
     try:
-        cursor.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
+        print(f"DEBUG DB: Attempting to delete transaction(s) related to ID: {transaction_id}")
+        # Determina o ID base da transação
+        # Se o ID contém '-', é provável que seja uma parcela (ex: base_id-1)
+        # Caso contrário, é uma transação à vista ou a própria base de um parcelamento antigo.
+        parts = transaction_id.split('-')
+        if len(parts) > 1 and parts[-1].isdigit(): # Verifica se a última parte é um número (indicando parcela)
+            transaction_id_base = '-'.join(parts[:-1])
+            print(f"DEBUG DB: Detected parcel. Base ID: {transaction_id_base}. Deleting base and all installments like '{transaction_id_base}-%'.")
+            # Exclui todas as parcelas e a transação base (se existir com o mesmo ID base)
+            cursor.execute("DELETE FROM transactions WHERE id = ? OR id LIKE ?", (transaction_id_base, transaction_id_base + '-%'))
+        else:
+            transaction_id_base = transaction_id # The passed ID is the base
+            print(f"DEBUG DB: Detected non-parcel or base ID: {transaction_id_base}. Deleting this ID and all installments like '{transaction_id_base}-%'.")
+            # Transação à vista ou um ID base sem parcelas numeradas explicitamente
+            # Também cobre o caso de excluir uma transação base que pode ter parcelas (o LIKE acima cuidaria das parcelas)
+            cursor.execute("DELETE FROM transactions WHERE id = ? OR id LIKE ?", (transaction_id_base, transaction_id_base + '-%'))
+
+        deleted_count = cursor.rowcount
         conn.commit()
-        if cursor.rowcount > 0:
-            print(f"Transação com ID '{transaction_id}' excluída com sucesso.")
+
+        if deleted_count > 0:
+            print(f"DEBUG DB: Successfully deleted {deleted_count} transaction(s) related to base ID derived from '{transaction_id}'.")
             return True
         else:
-            print(f"Nenhuma transação encontrada com ID '{transaction_id}' para excluir.")
+            print(f"DEBUG DB: No transactions found to delete related to base ID derived from '{transaction_id}'.")
             return False
     except sqlite3.Error as e:
         print(f"Erro ao excluir transação ID '{transaction_id}': {e}")
         return False
     finally:
         conn.close()
-        
+
 def delete_category(category_id):
     """Exclui uma categoria do banco de dados pelo seu ID."""
     conn = get_db_connection()
@@ -511,7 +545,11 @@ def get_transaction_by_id(transaction_id):
     cursor.execute(query, (transaction_id,))
     transaction = cursor.fetchone()
     conn.close()
-    return dict(transaction) if transaction else None
+    if transaction:
+        transaction_dict = dict(transaction)
+        print(f"DEBUG Database.get_transaction_by_id: Retrieved transaction data: {transaction_dict}")
+        return transaction_dict
+    return None
 
 def update_transaction(transaction_id, description, value, due_date, payment_date, status, category_id):
     """Atualiza uma transação existente no banco de dados."""
