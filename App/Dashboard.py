@@ -1,10 +1,12 @@
 import customtkinter
 import tkinter as tk
+import sys # Para resource_path
+import os  # Para resource_path
 from PIL import Image # Adicionado para carregar a imagem do logo
 import datetime # Para obter o ano atual 
 # from form_cadastro import FormCadastroWindow # Removido
 from form_cadastro_categoria import FormCadastroCategoriaWindow # Importa o formulário de categoria
-from form_detalhes_mensais import FormDetalhesMensaisWindow # Importa a nova janela de detalhes
+from form_detalhes_mensais import DetalhesMensaisView # ALTERADO: Importa a nova classe de visualização
 
 from form_transacao import FormTransacaoWindow # Importa a nova janela de formulário de transação
 # Importa as funções do nosso novo módulo de banco de dados (se necessário no futuro para o Dashboard).
@@ -28,13 +30,23 @@ FONTE_USUARIO_LOGADO = (FONTE_FAMILIA, 10, "italic")
 FONTE_BOTAO_ACAO = (FONTE_FAMILIA, 13, "bold")
 
 COR_CONTAINER_INTERNO = "#222222" # Cinza mais escuro para containers internos, próximo ao fundo da janela
+
+def resource_path(relative_path):
+    """ Obtém o caminho absoluto para o recurso, funciona para desenvolvimento e para PyInstaller """
+    try:
+        # PyInstaller cria uma pasta temporária e armazena o caminho em _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 class Dashboard(customtkinter.CTk):
     def __init__(self, user_id=None): # Adiciona user_id como parâmetro opcional.
         super().__init__()
         self.current_user_id = user_id # Armazena o ID do usuário logado.
         self.form_cadastro_window = None # Referência para a janela de cadastro
         self.form_transacao_window = None # Referência para a janela de transação
-        self.form_detalhes_mensais_window = None # Referência para a janela de detalhes mensais
+        # self.form_detalhes_mensais_window = None # REMOVIDO: Não será mais uma Toplevel separada
         self.request_restart_on_close = False # Sinalizador para reinício
         # self.main_app_window = master # Removido, pois 'master' não é passado e a lógica de voltar já funciona
         self.months_list = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -51,18 +63,11 @@ class Dashboard(customtkinter.CTk):
         # Set grid layout for the main window (1 column for title, 2 columns below title)
         # Configura o grid principal para ter 3 colunas expansíveis
         self.grid_columnconfigure(0, weight=1) # Primeira coluna (Lista Mensal, Resumo Anual)
-        self.grid_columnconfigure(1, weight=1) # Segunda coluna (Resumo Mensal, Gráfico Anual)
-        self.grid_columnconfigure(2, weight=1) # Terceira coluna (Gráfico Mensal)
+        # self.grid_columnconfigure(1, weight=1) # Removido, content_area cuidará disso
+        # self.grid_columnconfigure(2, weight=1) # Removido
         self.grid_rowconfigure(0, weight=0) # Title row
-        self.grid_rowconfigure(2, weight=0) # Row for list_container_frame title (monthly details)
-        self.grid_rowconfigure(3, weight=0) # Empty spacer row
-        self.grid_rowconfigure(4, weight=1) # Row for monthly containers (list, summary, pie)
-        self.grid_rowconfigure(5, weight=1) # Row for monthly containers (rowspan)
-        self.grid_rowconfigure(6, weight=0) # Row for "Resumo Anual" title
-        self.grid_rowconfigure(7, weight=1) # Row for annual_list_container_frame (TABLES) & annual_pie_chart_container_frame
-        self.grid_rowconfigure(8, weight=1) # Row for annual_totals_display_frame (TOTALS) & annual_pie_chart_container_frame (rowspan)
-        self.grid_rowconfigure(9, weight=0) # Row for action buttons and logo
-        self.grid_rowconfigure(1, weight=0) # Row for month buttons (Mantido no lugar correto)
+        self.grid_rowconfigure(1, weight=1) # NOVA LINHA: Para self.main_content_area (expansível)
+        self.grid_rowconfigure(2, weight=0) # NOVA LINHA: Para self.actions_container_frame (botões inferiores)
 
 
         # --- Header Frame (Title and Year Selector) ---
@@ -114,145 +119,50 @@ class Dashboard(customtkinter.CTk):
         self.year_combobox.pack(side="left")
         self.year_combobox.configure(command=self.year_changed_event)
 
+        # --- Área de Conteúdo Principal ---
+        self.main_content_area = customtkinter.CTkFrame(self, fg_color="transparent")
+        self.main_content_area.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
+        self.main_content_area.grid_columnconfigure(0, weight=1) # Para o conteúdo interno expandir
+        self.main_content_area.grid_rowconfigure(0, weight=1)    # Para o conteúdo interno expandir
 
-        # --- Top Container for Months ---
-        self.months_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
-        # Ajustado columnspan para 3
-        self.months_container_frame.grid(row=1, column=0, columnspan=3, padx=20, pady=10, sticky="nsew") # Span across two columns
-
-        # Configura o grid dentro do months_container_frame para os botões dos meses
-        for i in range(2): # 2 linhas
-            self.months_container_frame.grid_rowconfigure(i, weight=1)
-        for i in range(6): # 6 colunas
-            self.months_container_frame.grid_columnconfigure(i, weight=1)
-
-        # Estilo dos botões (baseado nos botões de ação)
-        month_button_font = FONTE_NORMAL_BOLD # Usando uma fonte já definida, similar à dos botões de ação
-        # month_button_height = 35 # Removido para que a altura se ajuste à fonte
-        month_button_corner_radius = 17
-        month_button_fg_color = "gray30"
-        month_button_hover_color = "#2196F3"
-        for i, month_name in enumerate(self.months_list):
-            row = i // 6  # 0 para os primeiros 6 meses, 1 para os próximos 6
-            col = i % 6   # 0 a 5 para as colunas
-
-            month_button = customtkinter.CTkButton(
-                self.months_container_frame,
-                text=month_name,
-                font=month_button_font,
-                corner_radius=month_button_corner_radius,
-                fg_color=month_button_fg_color,
-                hover_color=month_button_hover_color,
-                command=lambda m_idx=i: self.month_button_clicked(m_idx)
-                )
-            month_button.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
-
-        # --- Container for Monthly Proventos Summary ---
-        # Movido para a direita da lista mensal, e com tamanho expansível
-        self.monthly_proventos_summary_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO, height=150)
-        # Movido para row=4
-        self.monthly_proventos_summary_frame.grid(row=4, column=1, rowspan=2, padx=(10,10), pady=(10, 20), sticky="nsew")
-        # self.monthly_proventos_summary_frame.grid_propagate(False) # Removido para permitir expansão
-        # Configurar grid interno para os títulos e valores
-        self.monthly_proventos_summary_frame.grid_columnconfigure(0, weight=0)
-        self.monthly_proventos_summary_frame.grid_columnconfigure(1, weight=1)
-        self.monthly_proventos_summary_frame.grid_rowconfigure(0, weight=0) # Proventos
-        self.monthly_proventos_summary_frame.grid_rowconfigure(1, weight=0) # Despesas
-        self.monthly_proventos_summary_frame.grid_rowconfigure(2, weight=1) # Saldo (allow expansion if needed)
-        self.load_monthly_proventos_summary() # Carrega o resumo de proventos do mês
-
-        # --- Title for Annual Summary ---
-        self.annual_summary_title_label = customtkinter.CTkLabel(self, text="Resumo Anual", font=FONTE_TITULO_GRANDE)
-        # Ajustado columnspan para 3
-        self.annual_summary_title_label.grid(row=6, column=0, columnspan=3, pady=(10, 5), padx=20, sticky="w") # Movido para row=6
-
-        # --- Left Container for Annual Summary List (TABLES ONLY) ---
-        self.annual_list_container_frame = customtkinter.CTkFrame(self, corner_radius=10, fg_color=COR_CONTAINER_INTERNO) # No border_width
-        self.annual_list_container_frame.grid(row=7, column=0, padx=(20,10), pady=(10, 0), sticky="nsew") # Movido para row=7
-        # Configurar grid para o annual_list_container_frame gerenciar seu filho (tables_display_frame)
-        self.annual_list_container_frame.grid_rowconfigure(0, weight=1)  # Single row for tables_display_frame
-        self.annual_list_container_frame.grid_columnconfigure(0, weight=1) # Coluna única para expandir os frames internos
-
-        # --- New Container for Annual Summary TOTALS (WITH BORDER) ---
-        self.annual_totals_display_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO, width=260, height=120)
-        self.annual_totals_display_frame.grid(row=8, column=0, padx=(20,10), pady=(5, 20), sticky="w") # Movido para row=8
-        self.annual_totals_display_frame.grid_propagate(False) # Impede que os filhos redimensionem o frame
-        # Configure grid for annual_totals_display_frame to manage its children (the totals_summary_frame)
-        self.annual_totals_display_frame.grid_rowconfigure(0, weight=0) # For totals_summary_frame
-        self.annual_totals_display_frame.grid_columnconfigure(0, weight=0) # Changed weight to 0
-
-        self.load_annual_category_summaries() # Carrega os resumos anuais AQUI
-        # --- Right Container for Annual Summary Pie Chart ---
-        self.annual_pie_chart_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
-        self.annual_pie_chart_container_frame.grid(row=7, column=1, rowspan=2, padx=(10,20), pady=(10, 20), sticky="nsew") # Movido para row=7
-        # Placeholder removido, será populado pelo gráfico
-        self._load_annual_pie_chart_data() # Carrega o gráfico anual
+        # Constrói a UI inicial do Dashboard dentro da main_content_area
+        self._build_dashboard_ui_elements(self.main_content_area)
 
         # --- Bottom Container for Action Buttons and Logo ---
         self.actions_container_frame = customtkinter.CTkFrame(self, corner_radius=0, fg_color="transparent") # Sem cantos e transparente
-        # Ajustado columnspan para 3
-        self.actions_container_frame.grid(row=9, column=0, columnspan=3, padx=0, pady=(10,20), sticky="nsew") # Movido para row=9
+        self.actions_container_frame.grid(row=2, column=0, columnspan=1, padx=0, pady=(10,20), sticky="nsew") # Movido para row=2
 
 
         # Frame interno para centralizar os botões
         buttons_inner_frame = customtkinter.CTkFrame(self.actions_container_frame, fg_color="transparent")
         buttons_inner_frame.pack(expand=True, anchor="center", pady=10) # Centraliza o frame dos botões
 
-        # --- Left Container for List Items ---
-        # Transformado em CTkScrollableFrame
-        self.list_container_frame = customtkinter.CTkScrollableFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO, height=150)
-        self.list_container_frame.grid(row=4, column=0, rowspan=2, padx=(20,10), pady=(0, 20), sticky="nsew") # Movido para row=4
-        
-        self.list_container_title_label = customtkinter.CTkLabel(self, text="Detalhes do Mês", font=FONTE_TITULO_MEDIO)
-        self.list_container_title_label.grid(row=2, column=0, padx=(20,10), pady=(10,0), sticky="sw") # Acima do list_container_frame
-        self.load_monthly_details_for_list_container() # Carrega os detalhes mensais
-
-
-        # Configure grid for actions container (1 row, many columns for flexibility or use pack)
-        # Usaremos pack para os botões e place para o logo
-
-        # Botões de Ação
-        button_font = FONTE_BOTAO_ACAO
-        button_width = 150
-        button_height = 35 # Altura padrão dos botões
-        button_corner_radius = 17 # Para cantos bem arredondados, ~metade da altura
-
-        # --- Bottom Container for Pie Chart ---
-        # Descomentado e movido para a coluna 2
-        self.pie_chart_container_frame = customtkinter.CTkFrame(self, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO, height=150)
-        self.pie_chart_container_frame.grid(row=4, column=2, rowspan=2, padx=(10,20), pady=(10, 20), sticky="nsew") # Movido para row=4
-
-        # Placeholder removido, será populado pelo gráfico
-        self._load_monthly_pie_chart_data() # Descomentado
-
-        button_corner_radius = 17 # Para cantos bem arredondados, ~metade da altura
-        
         # Define as cores para os botões
         cor_botao_cinza = "gray30"  # Um cinza mais escuro do customtkinter
         cor_botao_azul_hover = "#2196F3" # O mesmo azul usado anteriormente para hover
 
         # Movendo "Cadastrar Despesa/Provento" para ser o primeiro botão da lista
         self.transaction_button = customtkinter.CTkButton(buttons_inner_frame, text="Cadastrar Despesa/Provento",
-                                                         font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
+                                                         font=FONTE_BOTAO_ACAO, width=150, height=35, corner_radius=17,
                                                          fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover,
                                                          command=lambda: self.open_form_transacao("Despesa")) # Abre como Despesa por padrão
         self.transaction_button.pack(side="left", padx=5)
 
         self.details_button = customtkinter.CTkButton(buttons_inner_frame, text="Detalhes",
-                                                      font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
+                                                      font=FONTE_BOTAO_ACAO, width=150, height=35, corner_radius=17,
                                                       fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover,
-                                                      command=self.open_form_detalhes_mensais)
+                                                      command=self._show_detalhes_mensais_view) # ALTERADO
         self.details_button.pack(side="left", padx=5) # Removido pady daqui, já está no buttons_inner_frame
 
         self.new_category_button = customtkinter.CTkButton(buttons_inner_frame, text="Nova Categoria",
-                                                           font=button_font, width=button_width, height=button_height, corner_radius=button_corner_radius,
+                                                           font=FONTE_BOTAO_ACAO, width=150, height=35, corner_radius=17,
                                                                    fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover,
                                                            command=self.open_form_cadastro) # Adiciona comando
         self.new_category_button.pack(side="left", padx=5)
 
         # Logo como Marca d'água
         try:
-            logo_image_path = "Images/Logo.png"
+            logo_image_path = resource_path("Images/Logo.png")
             pil_logo_image = Image.open(logo_image_path)
             # Defina o tamanho desejado para o logo. Ajuste conforme necessário.
             self.logo_ctk_image = customtkinter.CTkImage(pil_logo_image, size=(60, 60)) 
@@ -265,9 +175,6 @@ class Dashboard(customtkinter.CTk):
         except Exception as e:
             print(f"Erro ao carregar a imagem do logo: {e}")
 
-        # Pré-seleciona Janeiro ao iniciar
-        if self.months_list: # Garante que a lista de meses exista
-            self.month_button_clicked(0) # 0 é o índice para Janeiro
 
         # Configurações da janela principal (movidas para o final do __init__)
         self.title("Gestão Financeira - Dashboard")
@@ -277,6 +184,93 @@ class Dashboard(customtkinter.CTk):
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         self.geometry(f"{screen_width}x{screen_height}")
+
+        # Pré-seleciona Janeiro ao iniciar (após a UI do dashboard ser construída)
+        if self.months_list:
+            self.month_button_clicked(0)
+
+    def _clear_main_content_area(self):
+        """Limpa todos os widgets da área de conteúdo principal."""
+        for widget in self.main_content_area.winfo_children():
+            widget.destroy()
+
+    def _build_dashboard_ui_elements(self, parent_frame):
+        """Constrói ou reconstrói os elementos da UI do Dashboard dentro do parent_frame."""
+        parent_frame.grid_columnconfigure(0, weight=1)
+        parent_frame.grid_columnconfigure(1, weight=1)
+        parent_frame.grid_columnconfigure(2, weight=1)
+        parent_frame.grid_rowconfigure(0, weight=0) # Months container
+        parent_frame.grid_rowconfigure(1, weight=0) # list_container_title_label
+        parent_frame.grid_rowconfigure(2, weight=0) # list_container, pie_chart, monthly_summary
+        parent_frame.grid_rowconfigure(3, weight=0) # annual_summary_title_label
+        parent_frame.grid_rowconfigure(4, weight=1) # annual_list, annual_pie, annual_totals
+
+        # --- Top Container for Months ---
+        self.months_container_frame = customtkinter.CTkFrame(parent_frame, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
+        self.months_container_frame.grid(row=0, column=0, columnspan=3, padx=20, pady=10, sticky="nsew")
+        for i in range(2): self.months_container_frame.grid_rowconfigure(i, weight=1)
+        for i in range(6): self.months_container_frame.grid_columnconfigure(i, weight=1)
+        month_button_font = FONTE_NORMAL_BOLD
+        month_button_corner_radius = 17
+        month_button_fg_color = "gray30"
+        month_button_hover_color = "#2196F3"
+        for i, month_name in enumerate(self.months_list):
+            row, col = i // 6, i % 6
+            month_button = customtkinter.CTkButton(self.months_container_frame, text=month_name, font=month_button_font,
+                                                 corner_radius=month_button_corner_radius, fg_color=month_button_fg_color,
+                                                 hover_color=month_button_hover_color, command=lambda m_idx=i: self.month_button_clicked(m_idx))
+            month_button.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
+
+        # --- Monthly Details Section ---
+        self.list_container_title_label = customtkinter.CTkLabel(parent_frame, text="Detalhes do Mês", font=FONTE_TITULO_MEDIO)
+        self.list_container_title_label.grid(row=1, column=0, padx=(20,10), pady=(10,0), sticky="sw")
+
+        self.list_container_frame = customtkinter.CTkScrollableFrame(parent_frame, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO, height=120)
+        self.list_container_frame.grid(row=2, column=0, padx=(20,10), pady=(0, 10), sticky="nsew")
+        
+        self.pie_chart_container_frame = customtkinter.CTkFrame(parent_frame, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO, height=120)
+        self.pie_chart_container_frame.grid(row=2, column=1, padx=(10,10), pady=(0, 10), sticky="nsew")
+        self.pie_chart_container_frame.grid_propagate(False)
+
+        self.monthly_proventos_summary_frame = customtkinter.CTkFrame(parent_frame, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO, width=260, height=120)
+        self.monthly_proventos_summary_frame.grid(row=2, column=2, padx=(10,20), pady=(0, 10), sticky="nsew")
+        self.monthly_proventos_summary_frame.grid_columnconfigure(0, weight=0)
+        self.monthly_proventos_summary_frame.grid_columnconfigure(1, weight=1)
+        self.monthly_proventos_summary_frame.grid_rowconfigure(0, weight=0)
+        self.monthly_proventos_summary_frame.grid_rowconfigure(1, weight=0)
+        self.monthly_proventos_summary_frame.grid_rowconfigure(2, weight=1)
+
+        # --- Annual Summary Section ---
+        self.annual_summary_title_label = customtkinter.CTkLabel(parent_frame, text="Resumo Anual", font=FONTE_TITULO_GRANDE)
+        self.annual_summary_title_label.grid(row=3, column=0, columnspan=3, pady=(10, 5), padx=20, sticky="w")
+
+        self.annual_list_container_frame = customtkinter.CTkFrame(parent_frame, corner_radius=10, fg_color=COR_CONTAINER_INTERNO)
+        self.annual_list_container_frame.grid(row=4, column=0, padx=(20,10), pady=(10, 20), sticky="nsew")
+        self.annual_list_container_frame.grid_rowconfigure(0, weight=1)
+        self.annual_list_container_frame.grid_columnconfigure(0, weight=1)
+
+        self.annual_pie_chart_container_frame = customtkinter.CTkFrame(parent_frame, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO)
+        self.annual_pie_chart_container_frame.grid(row=4, column=1, padx=(10,10), pady=(10, 20), sticky="nsew")
+
+        self.annual_totals_display_frame = customtkinter.CTkFrame(parent_frame, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO, width=260, height=120)
+        self.annual_totals_display_frame.grid(row=4, column=2, padx=(10,20), pady=(10, 20), sticky="nsew")
+        self.annual_totals_display_frame.grid_propagate(False)
+        self.annual_totals_display_frame.grid_rowconfigure(0, weight=0)
+        self.annual_totals_display_frame.grid_columnconfigure(0, weight=0)
+
+        # Carregar dados para os elementos recém-criados
+        self.load_monthly_details_for_list_container()
+        self.load_monthly_proventos_summary()
+        self._load_monthly_pie_chart_data()
+        self.load_annual_category_summaries()
+        self._load_annual_pie_chart_data()
+
+        # Pré-seleciona Janeiro se nenhum mês estiver selecionado
+        if self.selected_month_index is None and self.months_list:
+             self.month_button_clicked(0) # 0 é o índice para Janeiro
+        elif self.selected_month_index is not None: # Garante que o título seja atualizado
+            self.list_container_title_label.configure(text=f"Detalhes de {self.months_list[self.selected_month_index]}")
+
 
     def open_form_cadastro(self):
         if self.form_cadastro_window is None or not self.form_cadastro_window.winfo_exists(): # Verifica se a janela não existe ou foi fechada
@@ -290,19 +284,35 @@ class Dashboard(customtkinter.CTk):
             self.form_cadastro_window.focus() # Traz a nova janela para o foco
         else:
             self.form_cadastro_window.focus() # Se a janela já existe, apenas a traz para o foco
+    
+    def _show_dashboard_view(self):
+        """Limpa a área de conteúdo e reconstrói a UI do Dashboard."""
+        self._clear_main_content_area()
+        # Re-exibe o header e os botões de ação do Dashboard
+        self.header_frame.grid(row=0, column=0, columnspan=1, padx=20, pady=(20, 10), sticky="ew") # Ajustado columnspan para 1
+        self.actions_container_frame.grid(row=2, column=0, columnspan=1, padx=0, pady=(10,20), sticky="nsew")
 
-    def open_form_detalhes_mensais(self):
+        # Constrói os elementos internos do dashboard na área de conteúdo principal
+        self._build_dashboard_ui_elements(self.main_content_area)
+        self._refresh_dashboard_data() # Garante que os dados estejam atualizados
+
+    def _show_detalhes_mensais_view(self):
+        """Limpa a área de conteúdo e mostra a visualização de Detalhes Mensais."""
         selected_year = self.year_combobox.get()
         if not self.current_user_id or not selected_year:
             print("Dashboard: Usuário ou ano não selecionado para abrir detalhes.")
             # Poderia mostrar um CTkMessagebox aqui
             return
+        
+        # Limpa a área de conteúdo e esconde o header e os botões de ação do Dashboard
+        self._clear_main_content_area()
+        self.header_frame.grid_remove()
+        self.actions_container_frame.grid_remove()
 
-        if self.form_detalhes_mensais_window is None or not self.form_detalhes_mensais_window.winfo_exists():
-            self.form_detalhes_mensais_window = FormDetalhesMensaisWindow(master=self, current_user_id=self.current_user_id, selected_year=selected_year)
-            self.form_detalhes_mensais_window.focus()
-        else:
-            self.form_detalhes_mensais_window.focus()
+        detalhes_view = DetalhesMensaisView(master=self.main_content_area, current_user_id=self.current_user_id, 
+                                            selected_year=selected_year, close_callback=self._show_dashboard_view,
+                                            main_dashboard_refresh_callback=self._refresh_dashboard_data)
+        detalhes_view.pack(expand=True, fill="both")
 
     def open_form_transacao(self, tipo_transacao):
         if self.form_transacao_window is None or not self.form_transacao_window.winfo_exists():
@@ -331,11 +341,12 @@ class Dashboard(customtkinter.CTk):
         print(f"Ano selecionado: {selected_year}")
         self.load_annual_category_summaries() # Recarrega os resumos anuais
         self._load_annual_pie_chart_data()
-        # Recarrega dados mensais se um mês estiver selecionado
-        self.load_monthly_details_for_list_container() # Recarrega os detalhes mensais
-        self.load_monthly_proventos_summary()
-        self._load_monthly_pie_chart_data() # Descomentado
-
+        # Recarrega dados mensais somente se a view do dashboard estiver ativa
+        if hasattr(self, 'list_container_frame') and self.list_container_frame.winfo_exists():
+            self.load_monthly_details_for_list_container()
+            self.load_monthly_proventos_summary()
+            self._load_monthly_pie_chart_data()
+            
     def month_button_clicked(self, month_index):
         self.selected_month_index = month_index
         month_name = self.months_list[month_index]
@@ -343,7 +354,7 @@ class Dashboard(customtkinter.CTk):
         self.list_container_title_label.configure(text=f"Detalhes de {month_name}")
         self.load_monthly_details_for_list_container()
         self.load_monthly_proventos_summary()
-        self._load_monthly_pie_chart_data() # Descomentado
+        self._load_monthly_pie_chart_data()
 
     def load_monthly_proventos_summary(self):
         # Limpa o conteúdo anterior
@@ -721,12 +732,13 @@ class Dashboard(customtkinter.CTk):
         Isso é útil após salvar uma nova transação, por exemplo.
         """
         print("Dashboard: _refresh_dashboard_data chamado. Atualizando dados...")
-        self.load_annual_category_summaries()
-        self._load_annual_pie_chart_data()
-        # Atualiza dados mensais
-        self.load_monthly_details_for_list_container() # Atualiza a lista mensal se um mês estiver selecionado
-        self.load_monthly_proventos_summary()
-        self._load_monthly_pie_chart_data() # Descomentado
+        # Apenas atualiza se a UI do dashboard estiver visível (ou seja, os widgets existem)
+        if hasattr(self, 'annual_list_container_frame') and self.annual_list_container_frame.winfo_exists():
+            self.load_annual_category_summaries()
+            self._load_annual_pie_chart_data()
+            self.load_monthly_details_for_list_container()
+            self.load_monthly_proventos_summary()
+            self._load_monthly_pie_chart_data()
 if __name__ == "__main__":
     app = Dashboard(user_id="test_user_01") # Passa um user_id para teste
     app.mainloop()

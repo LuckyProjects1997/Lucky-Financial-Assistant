@@ -192,54 +192,45 @@ def add_transaction(transaction_id_base, user_id, category_id, original_descript
         all_successful = True # Initialize all_successful here
         if modality == "Parcelado" and num_installments and num_installments > 1:
             value_per_installment = round(total_value / num_installments, 2)
-            # Ajusta a última parcela para compensar arredondamentos
             remaining_value = total_value - (value_per_installment * (num_installments - 1))
 
-            current_due_date_obj = datetime.datetime.strptime(initial_due_date, "%Y-%m-%d")
+            # Esta variável manterá a data de vencimento da parcela atual que está sendo processada no loop.
+            # Começa com a data de vencimento inicial.
+            current_installment_due_date_obj = datetime.datetime.strptime(initial_due_date, "%Y-%m-%d")
 
             for i in range(num_installments):
                 parcel_number = i + 1
                 transaction_id = f"{transaction_id_base}-{parcel_number}"
                 description_with_installment = f"{original_description} ({parcel_number}/{num_installments})"
-                installments_str = f"{parcel_number}/{num_installments}"
-                current_value = value_per_installment if parcel_number < num_installments else remaining_value
+                installments_str_for_db = f"{parcel_number}/{num_installments}"
+                current_value_for_db = value_per_installment if parcel_number < num_installments else remaining_value
+
+                status_for_this_installment = initial_status
+                payment_date_for_this_installment = initial_payment_date
+                due_date_for_this_installment_str = ""
 
                 if parcel_number == 1:
-                    status_for_installment = initial_status
-                    payment_date_for_installment = initial_payment_date
+                    # Para a primeira parcela, a data de vencimento é a inicial.
+                    due_date_for_this_installment_str = current_installment_due_date_obj.strftime("%Y-%m-%d")
                 else:
-                    # Para parcelas futuras (2/N em diante), o status é SEMPRE 'Em Aberto'
-                    # e a data de pagamento é SEMPRE NULL, independentemente do status inicial.
-                    # A data de vencimento é calculada para o próximo mês.
-                    # A data de vencimento da primeira parcela é a initial_due_date.
+                    # Para parcelas subsequentes (2 em diante)
+                    status_for_this_installment = "Em Aberto"
+                    payment_date_for_this_installment = None
                     
-                    status_for_installment = "Em Aberto" # Parcelas futuras são em aberto
-                    payment_date_for_installment = None
-                    # Calcula a data de vencimento para as parcelas subsequentes
-                    # Adiciona um mês à data de vencimento da parcela anterior
-                    due_date_for_installment_obj = current_due_date_obj.replace(day=1) + datetime.timedelta(days=31) # Vai para o próximo mês
-                    # Tenta manter o mesmo dia do mês, ajustando se o mês for mais curto
+                    # Calcula a data de vencimento do próximo mês com base na data da parcela anterior
+                    next_due_date_obj = current_installment_due_date_obj.replace(day=1) + datetime.timedelta(days=31) # Avança para o próximo mês
                     try:
-                        due_date_for_installment_obj = due_date_for_installment_obj.replace(day=current_due_date_obj.day)
+                        next_due_date_obj = next_due_date_obj.replace(day=current_installment_due_date_obj.day)
                     except ValueError: # Dia inválido para o mês (ex: dia 31 em fevereiro)
-                        # Vai para o último dia do mês anterior (que é o mês correto)
-                        due_date_for_installment_obj = (due_date_for_installment_obj.replace(day=1) - datetime.timedelta(days=1))
+                        next_due_date_obj = (next_due_date_obj.replace(day=1) - datetime.timedelta(days=1)) # Último dia do mês correto
                     
-                    due_date_for_installment_str = due_date_for_installment_obj.strftime("%Y-%m-%d")
-                    current_due_date_obj = due_date_for_installment_obj # Update for the next iteration's base
-
-                # A data de vencimento da primeira parcela é sempre a initial_due_date
-                if parcel_number == 1:
-                     due_date_for_installment_str = initial_due_date
-                     # current_due_date_obj is already set from initial_due_date before the loop
-                     # and will be used as the base for the next parcel's calculation if num_installments > 1
-                # else: # This was part of the previous structure, now current_due_date_obj is updated inside the main else
-                #    current_due_date_obj = due_date_for_installment_obj # This was the correct placement for update
+                    current_installment_due_date_obj = next_due_date_obj # Atualiza a data de vencimento para a parcela atual
+                    due_date_for_this_installment_str = current_installment_due_date_obj.strftime("%Y-%m-%d")
                 
                 cursor.execute("""
                     INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date, status, modality, installments, launch_date)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (transaction_id, user_id, category_id, description_with_installment, current_value, due_date_for_installment_str, payment_date_for_installment, status_for_installment, modality, installments_str, launch_date))
+                """, (transaction_id, user_id, category_id, description_with_installment, current_value_for_db, due_date_for_this_installment_str, payment_date_for_this_installment, status_for_this_installment, modality, installments_str_for_db, launch_date))
                 
                 if cursor.rowcount == 0:
                     all_successful = False

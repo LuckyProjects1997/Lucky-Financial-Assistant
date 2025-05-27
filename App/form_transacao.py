@@ -5,6 +5,7 @@ import datetime # Para obter a data atual
 import uuid # Para gerar IDs únicos
 # Importa as funções do banco de dados
 import Database # Usando 'Database' com D maiúsculo conforme seu Main.py
+from CTkMessagebox import CTkMessagebox # Adicionado para exibir alertas
 # Importa a janela de formulário de cadastro de categorias/usuários
 from form_cadastro import FormCadastroWindow
 
@@ -256,6 +257,12 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
             try:
                 payment_date_db = datetime.datetime.strptime(payment_date_input, "%d/%m/%Y").strftime("%Y-%m-%d")
                 # Se status é Pago, e due_date_input está vazio (porque o campo foi escondido pela UI),
+                
+                # --- NOVA VALIDAÇÃO: Não permitir data de pagamento futura se status for 'Pago' ---
+                payment_date_obj = datetime.datetime.strptime(payment_date_input, "%d/%m/%Y").date() # Converte para objeto date para comparação
+                if payment_date_obj > datetime.date.today():
+                     CTkMessagebox(title="Erro de Validação", message="A Data de Pagamento não pode ser uma data futura para transações 'Pagas'.", icon="warning", master=self)
+                     return # Interrompe o salvamento
                 # definimos due_date_db como payment_date_db.
                 # Se due_date_input não estiver vazio (cenário menos provável com a UI atual), tentamos convertê-lo.
                 if due_date_input: # Caso o campo de data prevista esteja visível e preenchido

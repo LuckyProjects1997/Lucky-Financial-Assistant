@@ -28,6 +28,17 @@ indice_telas_containers = [
     "- Tela Dashboard", # Adiciona a Tela Dashboard ao índice.
 ]
 
+def resource_path(relative_path):
+    """ Obtém o caminho absoluto para o recurso, funciona para desenvolvimento e para PyInstaller """
+    try:
+        # PyInstaller cria uma pasta temporária e armazena o caminho em _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        # _MEIPASS não existe, então estamos em modo de desenvolvimento
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+
 # Classe principal da janela de Login.
 class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os objetos de interface do usuário.
     # Define a família de fontes padrão para esta janela
@@ -39,8 +50,8 @@ class LoginWindow(QWidget): # Herda de QWidget, a classe base para todos os obje
     def __init__(self):
         super().__init__() # Chama o construtor da classe pai (QWidget).
         self.largura_janela = 940
-        self.altura_janela = 940
-        self.caminho_imagem_fundo = "Images/Fundo.png" # Caminho relativo para a imagem
+        self.altura_janela = 940        
+        self.caminho_imagem_fundo = resource_path("Images/Fundo.png") # Caminho relativo para a imagem
         self.imagem_fundo = None # Atributo para armazenar o QPixmap da imagem de fundo
         self.original_imagem_fundo = None # Atributo para armazenar a imagem de fundo original não escalada
 

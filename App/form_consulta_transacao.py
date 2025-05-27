@@ -1,5 +1,7 @@
 # form_consulta_transacao.py
 import customtkinter
+import sys # Para resource_path
+import os  # Para resource_path
 import datetime
 import Database
 from PIL import Image # Adicionado para carregar o ícone
@@ -16,8 +18,18 @@ BOTAO_FG_COLOR = "gray30"
 BOTAO_HOVER_COLOR = "#2196F3"
 BOTAO_HEIGHT = 35
 
-# Caminho para o ícone de lápis (ajuste conforme necessário)
-PENCIL_ICON_PATH = "Images/pencil_icon.png"
+def resource_path(relative_path):
+    """ Obtém o caminho absoluto para o recurso, funciona para desenvolvimento e para PyInstaller """
+    try:
+        # PyInstaller cria uma pasta temporária e armazena o caminho em _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+
+# Caminho para o ícone de lápis
+PENCIL_ICON_PATH = resource_path("Images/pencil_icon.png")
 
 class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
     def __init__(self, master=None, transaction_id=None, on_action_completed_callback=None):
