@@ -64,9 +64,11 @@ def create_tables():
                status TEXT,           -- 'Pago', 'Em Aberto'
                 modality TEXT,         -- 'À vista', 'Parcelado'
                 installments TEXT,     -- Formato "1/N", "2/N", etc. ou NULL/ "1/1" para à vista
+                source_provento_id TEXT, -- ID do provento que pagou esta despesa
                 launch_date TEXT NOT NULL, -- Data de cadastro da transação
                 FOREIGN KEY (user_id) REFERENCES users (id),
-                FOREIGN KEY (category_id) REFERENCES categories (id)
+                FOREIGN KEY (category_id) REFERENCES categories (id),
+                FOREIGN KEY (source_provento_id) REFERENCES transactions (id) ON DELETE SET NULL ON UPDATE CASCADE
             )
         """)
         print("DEBUG DB: Tabela 'transactions' criada/verificada.") # Added
@@ -175,8 +177,7 @@ def update_category(category_id, name, category_type, color):
         return False
     finally:
         conn.close()
-
-def add_transaction(transaction_id_base, user_id, category_id, original_description, total_value, initial_due_date, initial_payment_date=None, initial_status=None, modality=None, num_installments=None, launch_date=None):
+def add_transaction(transaction_id_base, user_id, category_id, original_description, total_value, initial_due_date, initial_payment_date=None, initial_status=None, modality=None, num_installments=None, source_provento_id=None, launch_date=None):
     """Adiciona uma nova transação ao banco de dados.
     Se for parcelado, cria múltiplas entradas.
     initial_due_date e launch_date devem estar no formato YYYY-MM-DD.
@@ -228,9 +229,9 @@ def add_transaction(transaction_id_base, user_id, category_id, original_descript
                     due_date_for_this_installment_str = current_installment_due_date_obj.strftime("%Y-%m-%d")
                 
                 cursor.execute("""
-                    INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date, status, modality, installments, launch_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (transaction_id, user_id, category_id, description_with_installment, current_value_for_db, due_date_for_this_installment_str, payment_date_for_this_installment, status_for_this_installment, modality, installments_str_for_db, launch_date))
+                    INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date, status, modality, installments, source_provento_id, launch_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (transaction_id, user_id, category_id, description_with_installment, current_value_for_db, due_date_for_this_installment_str, payment_date_for_this_installment, status_for_this_installment, modality, installments_str_for_db, source_provento_id if parcel_number == 1 else None, launch_date)) # source_provento_id só na primeira parcela
                 
                 if cursor.rowcount == 0:
                     all_successful = False
@@ -242,9 +243,9 @@ def add_transaction(transaction_id_base, user_id, category_id, original_descript
                  description_final = f"{original_description} (1/1)"
 
             cursor.execute("""
-                INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date, status, modality, installments, launch_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (transaction_id_base, user_id, category_id, description_final, total_value, initial_due_date, initial_payment_date, initial_status, modality, installments_display, launch_date))
+                INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date, status, modality, installments, source_provento_id, launch_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (transaction_id_base, user_id, category_id, description_final, total_value, initial_due_date, initial_payment_date, initial_status, modality, installments_display, source_provento_id, launch_date))
             if cursor.rowcount == 0:
                 all_successful = False
                 print(f"Transação à vista com ID '{transaction_id_base}' já existe ou não pôde ser adicionada.")
@@ -524,6 +525,7 @@ def get_transaction_by_id(transaction_id):
             t.modality,
             t.installments,
             t.launch_date,
+            t.source_provento_id,
             c.name AS category_name,
             c.type AS category_type 
         FROM
@@ -542,16 +544,16 @@ def get_transaction_by_id(transaction_id):
         return transaction_dict
     return None
 
-def update_transaction(transaction_id, description, value, due_date, payment_date, status, category_id):
+def update_transaction(transaction_id, description, value, due_date, payment_date, status, category_id, source_provento_id=None):
     """Atualiza uma transação existente no banco de dados."""
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("""
             UPDATE transactions
-            SET description = ?, value = ?, due_date = ?, payment_date = ?, status = ?, category_id = ?
+            SET description = ?, value = ?, due_date = ?, payment_date = ?, status = ?, category_id = ?, source_provento_id = ?
             WHERE id = ?
-        """, (description, value, due_date, payment_date, status, category_id, transaction_id))
+        """, (description, value, due_date, payment_date, status, category_id, source_provento_id, transaction_id))
         conn.commit()
         if cursor.rowcount > 0:
             print(f"Transação ID '{transaction_id}' atualizada com sucesso.")
@@ -564,6 +566,48 @@ def update_transaction(transaction_id, description, value, due_date, payment_dat
         return False
     finally:
         conn.close()
+
+def get_spendable_proventos(user_id):
+    """
+    Busca todos os proventos que podem ser usados para pagar despesas.
+    Critérios:
+        - Transações do tipo 'Provento'.
+        - Status 'Pago'.
+    Calcula o saldo restante para cada provento.
+    Retorna uma lista de dicionários, cada um contendo:
+        id, description, payment_date, original_value, remaining_value.
+    Apenas proventos com remaining_value > 0 são retornados.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    query = """
+        SELECT
+            p.id,
+            p.description,
+            p.payment_date,
+            p.value AS original_value,
+            (p.value - COALESCE(SUM(d.value), 0)) AS remaining_value
+        FROM
+            transactions p
+        JOIN
+            categories c ON p.category_id = c.id
+        LEFT JOIN
+            transactions d ON p.id = d.source_provento_id AND d.user_id = p.user_id
+        WHERE
+            p.user_id = ? AND
+            c.type = 'Provento' AND
+            p.status = 'Pago'
+        GROUP BY
+            p.id, p.description, p.payment_date, p.value
+        HAVING
+            (p.value - COALESCE(SUM(d.value), 0)) > 0
+        ORDER BY
+            p.payment_date DESC, p.description ASC;
+    """
+    cursor.execute(query, (user_id,))
+    proventos = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in proventos]
 
 
 # Bloco para inicializar o banco de dados quando este script for executado diretamente (opcional, para teste).

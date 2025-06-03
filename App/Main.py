@@ -29,7 +29,6 @@ indice_telas_containers = [
 ]
 
 def resource_path(relative_path):
-    """ Obtém o caminho absoluto para o recurso, funciona para desenvolvimento e para PyInstaller """
     try:
         # PyInstaller cria uma pasta temporária e armazena o caminho em _MEIPASS
         base_path = sys._MEIPASS

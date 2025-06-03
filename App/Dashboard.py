@@ -36,11 +36,14 @@ def resource_path(relative_path):
     try:
         # PyInstaller cria uma pasta temporária e armazena o caminho em _MEIPASS
         base_path = sys._MEIPASS
-    except AttributeError:
+    except AttributeError: # _MEIPASS não existe, então estamos em modo de desenvolvimento
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
 class Dashboard(customtkinter.CTk):
+    SIDEBAR_OPEN_WIDTH = 220
+    SIDEBAR_CLOSED_WIDTH = 50
+
     def __init__(self, user_id=None): # Adiciona user_id como parâmetro opcional.
         super().__init__()
         self.current_user_id = user_id # Armazena o ID do usuário logado.
@@ -52,6 +55,11 @@ class Dashboard(customtkinter.CTk):
         self.months_list = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
                             "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
         self.selected_month_index = None # Para rastrear o mês selecionado (0-11)
+        self.sidebar_open = False # Estado inicial do menu lateral
+
+        # Elementos do menu lateral que precisam ser referenciados
+        self.sidebar_menu_title = None
+        self.sidebar_buttons = []
         self.list_container_title_label = None # Label para o título do list_container_frame
         print(f"Dashboard iniciado para o usuário ID: {self.current_user_id}")
         
@@ -60,26 +68,25 @@ class Dashboard(customtkinter.CTk):
         customtkinter.set_default_color_theme("blue") # Or choose another theme
 
 
-        # Set grid layout for the main window (1 column for title, 2 columns below title)
-        # Configura o grid principal para ter 3 colunas expansíveis
-        self.grid_columnconfigure(0, weight=1) # Primeira coluna (Lista Mensal, Resumo Anual)
-        # self.grid_columnconfigure(1, weight=1) # Removido, content_area cuidará disso
-        # self.grid_columnconfigure(2, weight=1) # Removido
+        # Configura o grid principal para ter 2 colunas: sidebar e main_content_area
+        self.grid_columnconfigure(0, weight=0, minsize=self.SIDEBAR_CLOSED_WIDTH) # Coluna para o sidebar (largura inicial)
+        self.grid_columnconfigure(1, weight=1) # Coluna para a área de conteúdo principal (expansível)
         self.grid_rowconfigure(0, weight=0) # Title row
-        self.grid_rowconfigure(1, weight=1) # NOVA LINHA: Para self.main_content_area (expansível)
-        self.grid_rowconfigure(2, weight=0) # NOVA LINHA: Para self.actions_container_frame (botões inferiores)
+        self.grid_rowconfigure(1, weight=1) # Linha para sidebar e main_content_area (expansível)
 
 
         # --- Header Frame (Title and Year Selector) ---
         self.header_frame = customtkinter.CTkFrame(self, fg_color="transparent")
-        # Ajustado columnspan para 3
-        self.header_frame.grid(row=0, column=0, columnspan=3, padx=20, pady=(20, 10), sticky="ew")
-
+        self.header_frame.grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 10), sticky="ew")
+        # Configurar colunas do header_frame para alinhar título, seletor de ano, logo e info do usuário
+        self.header_frame.grid_columnconfigure(0, weight=1) # Título e Seletor de Ano
+        self.header_frame.grid_columnconfigure(1, weight=0) # Logo
+        self.header_frame.grid_columnconfigure(2, weight=0) # Info do Usuário
 
 
          # Container para informações do usuário (à direita)
         user_info_container = customtkinter.CTkFrame(self.header_frame, fg_color="transparent")
-        user_info_container.pack(side="right", anchor="ne", padx=(20,0)) # Adicionado padx para separar do conteúdo à esquerda
+        user_info_container.grid(row=0, column=2, sticky="ne", padx=(20,0)) # Alterado de pack para grid
 
 
         self.logged_user_label = customtkinter.CTkLabel(user_info_container, text="", font=FONTE_USUARIO_LOGADO, text_color="gray60")
@@ -94,10 +101,8 @@ class Dashboard(customtkinter.CTk):
 
         # Container para o título e o seletor de ano (ocupa o espaço restante à esquerda)
         title_year_container = customtkinter.CTkFrame(self.header_frame, fg_color="transparent")
-        # fill="x" e expand=True para que o title_year_container ocupe o espaço horizontal restante.
-        # side="left" para que ele fique à esquerda do user_info_container.
-        title_year_container.pack(side="left", fill="x", expand=True)
-
+        title_year_container.grid(row=0, column=0, sticky="w") # Alinha à esquerda na primeira coluna do header
+        
         self.title_label = customtkinter.CTkLabel(title_year_container, text="Dashboard", font=FONTE_TITULO_GRANDE)
         # anchor="w" para alinhar o texto à esquerda dentro do seu espaço. padx para espaçamento.
         self.title_label.pack(side="left", anchor="w", padx=(0, 30)) 
@@ -105,9 +110,6 @@ class Dashboard(customtkinter.CTk):
         # Year Selector elements
         self.year_selector_frame = customtkinter.CTkFrame(title_year_container, fg_color="transparent")
         self.year_selector_frame.pack(side="left", anchor="w") # Alinha à esquerda, ao lado do título
-        
-
-
 
         self.year_label = customtkinter.CTkLabel(self.year_selector_frame, text="Ano Referência:", font=(FONTE_FAMILIA, 12))
         self.year_label.pack(side="left", padx=(0, 5))
@@ -119,62 +121,73 @@ class Dashboard(customtkinter.CTk):
         self.year_combobox.pack(side="left")
         self.year_combobox.configure(command=self.year_changed_event)
 
+        # Logo no Header
+        try:
+            logo_image_path = resource_path("Images/Logo.png")
+            pil_logo_image = Image.open(logo_image_path)
+            self.logo_ctk_image = customtkinter.CTkImage(pil_logo_image, size=(50, 50)) 
+            
+            self.logo_label_header = customtkinter.CTkLabel(self.header_frame, image=self.logo_ctk_image, text="")
+            self.logo_label_header.grid(row=0, column=1, padx=(10,10), sticky="e") # Alinha à direita na segunda coluna do header
+        except FileNotFoundError:
+            print(f"Erro: Imagem do logo '{logo_image_path}' não encontrada.")
+        except Exception as e:
+            print(f"Erro ao carregar a imagem do logo: {e}")
+
+        # --- Sidebar Frame ---
+        self.sidebar_frame = customtkinter.CTkFrame(self, width=self.SIDEBAR_CLOSED_WIDTH, corner_radius=0, fg_color=COR_CONTAINER_INTERNO)
+        self.sidebar_frame.grid(row=1, column=0, sticky="nsw") # nsw para preencher verticalmente e ficar à esquerda
+        self.sidebar_frame.grid_propagate(False) # Impede que os widgets filhos controlem o tamanho do frame
+
+        # Botão para abrir/fechar o menu lateral
+        self.sidebar_toggle_button = customtkinter.CTkButton(self.sidebar_frame, text="☰", width=40, height=40,
+                                                             font=(FONTE_FAMILIA, 20), command=self.toggle_sidebar,
+                                                             fg_color="transparent", hover_color="gray25")
+        self.sidebar_toggle_button.pack(pady=10, padx=5, anchor="n")
+
+        # Título "Menu" (inicialmente não visível)
+        self.sidebar_menu_title = customtkinter.CTkLabel(self.sidebar_frame, text="Menu", font=FONTE_TITULO_MEDIO)
+        # Não usa pack() aqui, será gerenciado por toggle_sidebar
+
+        # Botões do menu lateral (inicialmente não visíveis)
+        sidebar_button_font = FONTE_BOTAO_ACAO
+        sidebar_button_height = 35
+        sidebar_button_corner_radius = 17
+        sidebar_button_fg_color = "gray30"
+        sidebar_button_hover_color = "#2196F3"
+
+        self.sidebar_details_button = customtkinter.CTkButton(self.sidebar_frame, text="Detalhes",
+                                                              font=sidebar_button_font, height=sidebar_button_height,
+                                                              corner_radius=sidebar_button_corner_radius,
+                                                              fg_color=sidebar_button_fg_color, hover_color=sidebar_button_hover_color,
+                                                              command=self._show_detalhes_mensais_view)
+        self.sidebar_buttons.append(self.sidebar_details_button)
+
+        self.sidebar_transaction_button = customtkinter.CTkButton(self.sidebar_frame, text="Nova Despesa/Provento",
+                                                                  font=sidebar_button_font, height=sidebar_button_height,
+                                                                  corner_radius=sidebar_button_corner_radius,
+                                                                  fg_color=sidebar_button_fg_color, hover_color=sidebar_button_hover_color,
+                                                                  command=lambda: self.open_form_transacao("Despesa"))
+        self.sidebar_buttons.append(self.sidebar_transaction_button)
+
+        self.sidebar_category_button = customtkinter.CTkButton(self.sidebar_frame, text="Nova Categoria",
+                                                               font=sidebar_button_font, height=sidebar_button_height,
+                                                               corner_radius=sidebar_button_corner_radius,
+                                                               fg_color=sidebar_button_fg_color, hover_color=sidebar_button_hover_color,
+                                                               command=self.open_form_cadastro)
+        self.sidebar_buttons.append(self.sidebar_category_button)
+
         # --- Área de Conteúdo Principal ---
         self.main_content_area = customtkinter.CTkFrame(self, fg_color="transparent")
-        self.main_content_area.grid(row=1, column=0, sticky="nsew", padx=0, pady=0)
+        self.main_content_area.grid(row=1, column=1, sticky="nsew", padx=0, pady=0)
         self.main_content_area.grid_columnconfigure(0, weight=1) # Para o conteúdo interno expandir
         self.main_content_area.grid_rowconfigure(0, weight=1)    # Para o conteúdo interno expandir
 
         # Constrói a UI inicial do Dashboard dentro da main_content_area
         self._build_dashboard_ui_elements(self.main_content_area)
 
-        # --- Bottom Container for Action Buttons and Logo ---
-        self.actions_container_frame = customtkinter.CTkFrame(self, corner_radius=0, fg_color="transparent") # Sem cantos e transparente
-        self.actions_container_frame.grid(row=2, column=0, columnspan=1, padx=0, pady=(10,20), sticky="nsew") # Movido para row=2
-
-
-        # Frame interno para centralizar os botões
-        buttons_inner_frame = customtkinter.CTkFrame(self.actions_container_frame, fg_color="transparent")
-        buttons_inner_frame.pack(expand=True, anchor="center", pady=10) # Centraliza o frame dos botões
-
-        # Define as cores para os botões
-        cor_botao_cinza = "gray30"  # Um cinza mais escuro do customtkinter
-        cor_botao_azul_hover = "#2196F3" # O mesmo azul usado anteriormente para hover
-
-        # Movendo "Cadastrar Despesa/Provento" para ser o primeiro botão da lista
-        self.transaction_button = customtkinter.CTkButton(buttons_inner_frame, text="Cadastrar Despesa/Provento",
-                                                         font=FONTE_BOTAO_ACAO, width=150, height=35, corner_radius=17,
-                                                         fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover,
-                                                         command=lambda: self.open_form_transacao("Despesa")) # Abre como Despesa por padrão
-        self.transaction_button.pack(side="left", padx=5)
-
-        self.details_button = customtkinter.CTkButton(buttons_inner_frame, text="Detalhes",
-                                                      font=FONTE_BOTAO_ACAO, width=150, height=35, corner_radius=17,
-                                                      fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover,
-                                                      command=self._show_detalhes_mensais_view) # ALTERADO
-        self.details_button.pack(side="left", padx=5) # Removido pady daqui, já está no buttons_inner_frame
-
-        self.new_category_button = customtkinter.CTkButton(buttons_inner_frame, text="Nova Categoria",
-                                                           font=FONTE_BOTAO_ACAO, width=150, height=35, corner_radius=17,
-                                                                   fg_color=cor_botao_cinza, hover_color=cor_botao_azul_hover,
-                                                           command=self.open_form_cadastro) # Adiciona comando
-        self.new_category_button.pack(side="left", padx=5)
-
-        # Logo como Marca d'água
-        try:
-            logo_image_path = resource_path("Images/Logo.png")
-            pil_logo_image = Image.open(logo_image_path)
-            # Defina o tamanho desejado para o logo. Ajuste conforme necessário.
-            self.logo_ctk_image = customtkinter.CTkImage(pil_logo_image, size=(60, 60)) 
-            
-            self.logo_label = customtkinter.CTkLabel(self.actions_container_frame, image=self.logo_ctk_image, text="")
-            # Posiciona o logo no canto inferior direito do actions_container_frame
-            self.logo_label.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-5) # x e y para um pequeno offset da borda
-        except FileNotFoundError:
-            print(f"Erro: Imagem do logo '{logo_image_path}' não encontrada.")
-        except Exception as e:
-            print(f"Erro ao carregar a imagem do logo: {e}")
-
+        # Inicializa o estado visual do sidebar
+        self._update_sidebar_visibility()
 
         # Configurações da janela principal (movidas para o final do __init__)
         self.title("Gestão Financeira - Dashboard")
@@ -188,6 +201,30 @@ class Dashboard(customtkinter.CTk):
         # Pré-seleciona Janeiro ao iniciar (após a UI do dashboard ser construída)
         if self.months_list:
             self.month_button_clicked(0)
+
+    def toggle_sidebar(self):
+        self.sidebar_open = not self.sidebar_open
+        self._update_sidebar_visibility()
+
+    def _update_sidebar_visibility(self):
+        if self.sidebar_open:
+            self.sidebar_frame.configure(width=self.SIDEBAR_OPEN_WIDTH)
+            self.sidebar_toggle_button.configure(text="✕") # Ou um ícone de fechar
+            self.sidebar_menu_title.pack(pady=(5, 10), padx=10, anchor="n")
+            for button in self.sidebar_buttons:
+                button.pack(pady=5, padx=10, fill="x", anchor="n")
+        else:
+            self.sidebar_frame.configure(width=self.SIDEBAR_CLOSED_WIDTH)
+            self.sidebar_toggle_button.configure(text="☰") # Ícone de menu hamburger
+            if self.sidebar_menu_title and self.sidebar_menu_title.winfo_ismapped():
+                self.sidebar_menu_title.pack_forget()
+            for button in self.sidebar_buttons:
+                if button.winfo_ismapped():
+                    button.pack_forget()
+        
+        # Força a atualização do layout do sidebar_frame
+        self.sidebar_frame.update_idletasks()
+
 
     def _clear_main_content_area(self):
         """Limpa todos os widgets da área de conteúdo principal."""
@@ -288,9 +325,8 @@ class Dashboard(customtkinter.CTk):
     def _show_dashboard_view(self):
         """Limpa a área de conteúdo e reconstrói a UI do Dashboard."""
         self._clear_main_content_area()
-        # Re-exibe o header e os botões de ação do Dashboard
-        self.header_frame.grid(row=0, column=0, columnspan=1, padx=20, pady=(20, 10), sticky="ew") # Ajustado columnspan para 1
-        self.actions_container_frame.grid(row=2, column=0, columnspan=1, padx=0, pady=(10,20), sticky="nsew")
+        # Re-exibe o header do Dashboard (o sidebar já está visível)
+        self.header_frame.grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 10), sticky="ew")
 
         # Constrói os elementos internos do dashboard na área de conteúdo principal
         self._build_dashboard_ui_elements(self.main_content_area)
@@ -304,10 +340,10 @@ class Dashboard(customtkinter.CTk):
             # Poderia mostrar um CTkMessagebox aqui
             return
         
-        # Limpa a área de conteúdo e esconde o header e os botões de ação do Dashboard
+        # Limpa a área de conteúdo e esconde o header do Dashboard. O sidebar permanece.
         self._clear_main_content_area()
         self.header_frame.grid_remove()
-        self.actions_container_frame.grid_remove()
+        # self.actions_container_frame.grid_remove() # Não existe mais
 
         detalhes_view = DetalhesMensaisView(master=self.main_content_area, current_user_id=self.current_user_id, 
                                             selected_year=selected_year, close_callback=self._show_dashboard_view,
