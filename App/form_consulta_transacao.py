@@ -63,6 +63,34 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
         except FileNotFoundError:
             print(f"Erro: Ícone do lápis '{PENCIL_ICON_PATH}' não encontrado.")
             self.pencil_icon_image = None # Garante que seja None se falhar
+
+    def format_currency_input(self, event=None, entry_widget_override=None):
+        """Formata o valor como moeda (R$ X.XXX,XX) enquanto o usuário digita apenas números."""
+        entry_widget = entry_widget_override
+        if not entry_widget: # Fallback se não fornecido
+             # Não há mais um campo de valor editável padrão nesta tela,
+             # então este fallback pode não ser mais necessário aqui.
+             # Mantido por segurança se a função for chamada inesperadamente sem override.
+             entry_widget = self.field_elements.get("value", {}).get("input")
+             if not entry_widget: return
+
+        current_text = entry_widget.get()
+        digits_only = "".join(filter(str.isdigit, current_text))
+
+        if not digits_only: formatted_value = "0,00"
+        elif len(digits_only) == 1: formatted_value = f"0,0{digits_only}"
+        elif len(digits_only) == 2: formatted_value = f"0,{digits_only}"
+        else:
+            decimal_part = digits_only[-2:]
+            integer_part_str = digits_only[:-2].lstrip('0') or "0"
+            parts = [integer_part_str[max(0, i-3):i] for i in range(len(integer_part_str), 0, -3)]
+            formatted_integer_part = ".".join(reversed(parts)) if parts else "0"
+            formatted_value = f"{formatted_integer_part},{decimal_part}"
+        
+        entry_widget.delete(0, customtkinter.END)
+        entry_widget.insert(0, formatted_value)
+        entry_widget.icursor(len(formatted_value)) # Move o cursor para o final
+
     def _load_transaction_data(self):
         if self.transaction_id:
             self.transaction_data = Database.get_transaction_by_id(self.transaction_id)
@@ -85,20 +113,25 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
         # Configuração dos campos na ordem desejada
         # (Label Text, db_key, widget_type, is_alterable)
         # widget_type: 'label_only', 'entry', 'combobox_category', 'radios_status'
+        # is_alterable_config: True/False ou uma condição baseada nos dados da transação
+
+        
         field_configs = [
             ("ID:", "id", "label_only", False),
             ("Descrição:", "description", "entry", True),
             ("Data Lançamento:", "launch_date", "label_only", False),
             ("Categoria:", "category_name", "combobox_category", True), # db_key é category_name para display, mas usaremos category_id para salvar
             ("Modalidade:", "modality", "label_only", False),
-            ("Parcela:", "installments", "label_only", False),
-            ("Valor Total:", "total_value_compra", "label_only", False), # Adicionado conforme descrição
-            ("Valor Parcela (R$):", "value", "label_only", False), # Corrigido: Apenas uma entrada, não editável
+            ("Parcela:", "installments", "label_only", False), # Mantido como label_only
+            ("Valor Total:", "total_value_compra", "label_only", False), # Mantido como label_only
+            ("Valor (R$):", "value", "entry", lambda data: data.get('category_type') == 'Provento'), # ALTERADO: Agora é entry e alterável APENAS para Provento
             ("Status:", "status", "radios_status", True),
             ("Data Prevista:", "due_date", "entry", True),
             ("Data Pagamento:", "payment_date", "entry", True),
         ]
         
+        transaction_category_type = self.transaction_data.get('category_type')
+
         current_row = 0
 
         for label_text, db_key, widget_type, is_alterable in field_configs:
@@ -109,6 +142,11 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             icon_widget = None
             radios_for_status = None
 
+             
+            # Determina se o campo é alterável para ESTA transação específica
+            is_alterable_for_this_field = is_alterable # Assume o valor padrão da config
+            if callable(is_alterable): # Se a config for uma função, avalia
+                 is_alterable_for_this_field = is_alterable(self.transaction_data)
             if is_alterable:
                 if widget_type == "combobox_category":
                     categories = Database.get_categories_by_user(self.transaction_data.get("user_id"))
@@ -124,7 +162,7 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
                 elif widget_type == "entry":
                     input_widget = customtkinter.CTkEntry(main_frame, font=FONTE_VALOR_FORM, state="disabled", height=BOTAO_HEIGHT)
                 
-                if self.pencil_icon_image:
+                if self.pencil_icon_image and is_alterable_for_this_field: # Só mostra o ícone se for alterável para esta transação
                     icon_widget = customtkinter.CTkLabel(main_frame, text="", image=self.pencil_icon_image)
             
             self.field_elements[db_key] = {
@@ -132,7 +170,8 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
                 "input": input_widget, # Será None para campos 'label_only' ou se não for alterável
                 "icon": icon_widget,   # Será None se não for alterável ou se for status
                 "row": current_row,    # Store the row for precise placement later
-                "widget_type": widget_type
+                "widget_type": widget_type,
+                "is_alterable_for_this_transaction": is_alterable_for_this_field # Store the specific alterable state
             }
             if radios_for_status:
                 self.field_elements[db_key]["radios"] = radios_for_status
@@ -141,7 +180,7 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             display_widget.grid(row=current_row, column=1, sticky="e", padx=5, pady=(5,2)) # Alinhado à direita
             
             # Posiciona o ícone se existir
-            if icon_widget:
+            if icon_widget and is_alterable_for_this_field: # Só vincula o clique se o ícone existir e o campo for alterável
                 icon_widget.bind("<Button-1>", lambda event, k=db_key: self._enable_field_edit(k)) # Habilita edição ao clicar no ícone
                 icon_widget.grid(row=current_row, column=2, sticky="w", padx=(0,5), pady=(5,2))
             
@@ -193,6 +232,8 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             widget_type = elements["widget_type"]
             raw_value = self.transaction_data.get(db_key)
 
+            is_alterable_for_this_transaction = elements.get("is_alterable_for_this_transaction", False)
+            
             # Lógica especial para campos calculados ou com formatação específica
             display_text = ""
             input_text_or_val = None
@@ -209,10 +250,16 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
                 
                 total_compra_value = parcel_value * total_installments
                 display_text = f"R$ {total_compra_value:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
-            elif db_key == "value": # Valor da Parcela
+            elif db_key == "value": # Valor da Transação (Parcela ou À vista)
                 value_float = raw_value if raw_value is not None else 0.0
                 formatted_display_value = f"{value_float:,.2f}".replace(",", "#").replace(".", ",").replace("#", ".")
                 display_text = f"R$ {formatted_display_value}"
+                
+                # Se o campo for editável (Provento) e estiver em modo de edição,
+                # preenche o entry com os dígitos para a formatação
+                if is_alterable_for_this_transaction and self.is_editing and input_widget:
+                     # Remove formatação para inserir apenas dígitos no entry
+                     input_text_or_val = "".join(filter(str.isdigit, formatted_display_value))
                 input_text_or_val = str(int(round(value_float * 100))) # Dígitos para formatação
             elif db_key in ["due_date", "payment_date"]:
                 display_text = datetime.datetime.strptime(raw_value, "%Y-%m-%d").strftime("%d/%m/%Y") if raw_value else ""
@@ -236,8 +283,8 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
                 elif widget_type == "combobox_category":
                     if input_text_or_val: input_widget.set(str(input_text_or_val))
                 
-                # Aplica formatação se estiver em modo de edição
-                # O campo 'value' (Valor Parcela) é label_only, não precisa de formatação de input aqui.
+                # Aplica formatação se estiver em modo de edição E o campo for um entry
+                # e for um campo de data ou o campo de valor (se editável)
                 # A formatação de data é aplicada se o campo estiver ativo para edição.
                 if self.is_editing and widget_type != "label_only":
                     if db_key in ["due_date", "payment_date"] and input_widget.cget("state") == "normal":
@@ -251,7 +298,16 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
         try:
             # Coleta apenas os dados dos campos que são alteráveis
             updated_data = {"transaction_id": self.transaction_id}
-            
+
+            # --- Coleta e validação do campo 'value' (Valor) ---
+            if "value" in self.field_elements and self.field_elements["value"].get("is_alterable_for_this_transaction", False):
+                 value_elements = self.field_elements["value"]
+                 if value_elements["input"].cget("state") == "normal": # Se o campo de valor estava ativo para edição
+                     value_str_formatted = value_elements["input"].get().strip()
+                     # Remove formatação para converter para float
+                     value_str_for_float = value_str_formatted.replace(".", "").replace(",", ".")
+                     updated_data["value"] = float(value_str_for_float)
+
             if "description" in self.field_elements:
                 desc_elements = self.field_elements["description"]
                 if desc_elements["input"].cget("state") == "normal":
@@ -259,8 +315,8 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
                 else:
                     updated_data["description"] = self.transaction_data.get("description", "").strip()
 
-            # Valor Parcela (R$) não é mais editável, então sempre pegamos do self.transaction_data
-            updated_data["value"] = self.transaction_data.get("value", 0.0)
+            # Se o campo 'value' NÃO for alterável para esta transação, usa o valor original
+            if "value" not in updated_data: updated_data["value"] = self.transaction_data.get("value", 0.0)
             date_keys_to_process = {"due_date": "due_date", "payment_date": "payment_date"}
             for form_key, db_key in date_keys_to_process.items():
                 if form_key in self.field_elements:
@@ -409,9 +465,12 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             input_widget.configure(state="normal")
             input_widget.focus() # Define o foco para o campo de entrada
 
-        # Adiciona binds de formatação
-        if key in ["due_date", "payment_date"]: # Apenas para campos de data editáveis
+         # Adiciona binds de formatação se for um campo de data ou o campo de valor
+        if key in ["due_date", "payment_date"]:
             input_widget.bind("<KeyRelease>", lambda e, entry=input_widget: self.format_date_entry(e, entry))
+            self.format_date_entry(None, input_widget) # Aplica formatação inicial
+        elif key == "value": # Apenas para o campo de valor editável
+            input_widget.bind("<KeyRelease>", lambda e, entry=input_widget: self.format_currency_input(e, entry))
             self.format_date_entry(None, input_widget)
 
         self.save_button.configure(state="normal") # Habilita o botão Salvar
@@ -469,32 +528,6 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             entry_widget.icursor(current_cursor_pos) 
         else: 
             entry_widget.icursor(len(new_text))
-
-    def format_currency_input(self, event=None, entry_widget_override=None):
-        """Formata o valor como moeda (R$ X.XXX,XX) enquanto o usuário digita apenas números."""
-        entry_widget = entry_widget_override
-        if not entry_widget: # Fallback se não fornecido
-            # Não há mais um campo de valor editável padrão nesta tela,
-            # então este fallback pode não ser mais necessário aqui.
-            # Mantido por segurança se a função for chamada inesperadamente sem override.
-            entry_widget = self.field_elements.get("value", {}).get("input")
-            if not entry_widget: return
-
-        current_text = entry_widget.get()
-        digits_only = "".join(filter(str.isdigit, current_text))
-
-        if not digits_only: formatted_value = "0,00"
-        elif len(digits_only) == 1: formatted_value = f"0,0{digits_only}"
-        elif len(digits_only) == 2: formatted_value = f"0,{digits_only}"
-        else:
-            decimal_part = digits_only[-2:]
-            integer_part_str = digits_only[:-2].lstrip('0') or "0"
-            parts = [integer_part_str[max(0, i-3):i] for i in range(len(integer_part_str), 0, -3)]
-            formatted_integer_part = ".".join(reversed(parts)) if parts else "0"
-            formatted_value = f"{formatted_integer_part},{decimal_part}"
-        entry_widget.delete(0, customtkinter.END)
-        entry_widget.insert(0, formatted_value)
-        entry_widget.icursor(len(formatted_value))
 
 if __name__ == '__main__':  # Ensure this line has no leading spaces
     app_root = customtkinter.CTk()  # Indent with 4 spaces

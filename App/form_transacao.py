@@ -236,10 +236,10 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
             installments = int(installments_str)
         elif modality == "À vista":
             installments = 1 # Ou None, dependendo de como você quer armazenar no DB
-
         
         due_date_db = None
         payment_date_db = None
+        error_message = None # Variável para armazenar mensagens de erro específicas
 
         if status == "Em Aberto":
             if not due_date_input:
@@ -248,11 +248,12 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
             try:
                 due_date_db = datetime.datetime.strptime(due_date_input, "%d/%m/%Y").strftime("%Y-%m-%d")
             except ValueError:
-                print("Formato de Data Prevista inválido. Use DD/MM/AAAA.") # TODO: Mostrar alerta na GUI
+                error_message = "Formato de Data Prevista inválido. Use DD/MM/AAAA."
                 return
         elif status == "Pago":
+                        # Validações para status 'Pago'
             if not payment_date_input:
-                print("Data de Pagamento é obrigatória para status 'Pago'.") # TODO: Mostrar alerta na GUI
+                error_message = "Data de Pagamento é obrigatória para status 'Pago'."
                 return
             try:
                 payment_date_db = datetime.datetime.strptime(payment_date_input, "%d/%m/%Y").strftime("%Y-%m-%d")
@@ -270,10 +271,14 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
                 else:
                     due_date_db = payment_date_db # Data prevista será a mesma da data de pagamento
             except ValueError:
-                print("Formato de Data de Pagamento (ou Data Prevista, se visível) inválido. Use DD/MM/AAAA.") # TODO: Mostrar alerta na GUI
+                error_message = "Formato de Data de Pagamento (ou Data Prevista, se visível) inválido. Use DD/MM/AAAA."
                 return
         else: # Status desconhecido
-            print(f"Status desconhecido: {status}")
+            error_message = f"Status desconhecido: {status}"
+            return
+
+        if error_message:
+            CTkMessagebox(title="Erro de Validação", message=error_message, icon="warning", master=self)
             return
 
         all_categories = Database.get_categories_by_user(self.current_user_id)
@@ -299,7 +304,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
             num_installments=installments # Passa o número de parcelas calculado
         )
         if success:
-            print(f"{self.tipo_transacao} salva com sucesso!") # TODO: Mostrar alerta na GUI
+            CTkMessagebox(title="Sucesso", message=f"{self.tipo_transacao} salva com sucesso!", icon="check", master=self)
             # Limpar campos
             self.description_entry.delete(0, customtkinter.END)
             self.category_combobox.set("Selecione a Categoria")
@@ -315,7 +320,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
             if self.on_save_callback: # Chama o callback se ele foi fornecido
                 self.on_save_callback()
         else:
-            print(f"Falha ao salvar {self.tipo_transacao}.") # TODO: Mostrar alerta na GUI
+            CTkMessagebox(title="Erro", message=f"Falha ao salvar {self.tipo_transacao}. Verifique os dados e tente novamente.", icon="cancel", master=self)
 
     def open_form_cadastro_categoria(self, event=None):
         """Abre o formulário de cadastro de categorias."""

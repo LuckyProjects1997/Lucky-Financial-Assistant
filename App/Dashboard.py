@@ -159,6 +159,13 @@ class Dashboard(customtkinter.CTk):
         sidebar_button_fg_color = "gray30"
         sidebar_button_hover_color = "#2196F3"
 
+        self.sidebar_dashboard_button = customtkinter.CTkButton(self.sidebar_frame, text="Dashboard",
+                                                              font=sidebar_button_font, height=sidebar_button_height,
+                                                              corner_radius=sidebar_button_corner_radius,
+                                                              fg_color=sidebar_button_fg_color, hover_color=sidebar_button_hover_color,
+                                                              command=self._show_dashboard_view) # Comando para mostrar a view do Dashboard
+        self.sidebar_buttons.append(self.sidebar_dashboard_button)
+
         self.sidebar_details_button = customtkinter.CTkButton(self.sidebar_frame, text="Detalhes",
                                                               font=sidebar_button_font, height=sidebar_button_height,
                                                               corner_radius=sidebar_button_corner_radius,

@@ -113,7 +113,7 @@ class PlanejamentoView(customtkinter.CTkFrame): # Herda de CTkFrame
         # Botão "Simular" (agora dentro do allocation_header_frame)
         self.simulate_button = customtkinter.CTkButton(
             allocation_header_frame,
-            text="Simular",
+            text="Sugestão",
             font=FONTE_BOTAO_ACAO, # Usa a fonte dos botões de ação do Dashboard
             height=BOTAO_ACAO_HEIGHT, # Usa a altura dos botões de ação do Dashboard
             corner_radius=BOTAO_ACAO_CORNER_RADIUS, # Usa o raio dos botões de ação do Dashboard

@@ -100,7 +100,7 @@ class FormSimuladorWindow(customtkinter.CTkToplevel):
         return datetime.date.max # Se não houver data, considera como nunca disponível
 
     def _run_simulation(self):
-        print("--- Iniciando Simulação de Alocação ---")
+        print("--- Iniciando Simulação de Alocação (Estratégia Maior Saldo Restante) ---")
         # Inicializar saldos simulados com os valores originais dos proventos
         saldos_proventos_simulados = {p['id']: p['value'] for p in self.proventos_originais}
 
@@ -108,16 +108,13 @@ class FormSimuladorWindow(customtkinter.CTkToplevel):
         despesas_ordenadas = sorted(self.despesas_originais, key=lambda d: datetime.datetime.strptime(d['due_date'], "%Y-%m-%d").date())
         
         # Ordenar proventos por data de disponibilidade (e status 'Pago' primeiro)
-        proventos_ordenados = sorted(
-            self.proventos_originais,
-            key=lambda p: (
-                0 if p.get('status') == 'Pago' else 1, # Pagos primeiro
-                self._get_provento_availability_date(p)
-            )
-        )
+        # Não pré-ordenamos mais os proventos aqui, a seleção será dinâmica.
         
         print(f"Total de despesas para simular: {len(despesas_ordenadas)}")
-        print(f"Total de proventos disponíveis: {len(proventos_ordenados)}")
+        print(f"Total de proventos disponíveis (antes da simulação): {len(self.proventos_originais)}")
+
+        self.sugestoes_alocacao = [] # Limpa sugestões anteriores
+        self.despesas_nao_alocadas = [] # Limpa despesas não alocadas anteriores
 
         for despesa in despesas_ordenadas:
             despesa_vencimento = datetime.datetime.strptime(despesa['due_date'], "%Y-%m-%d").date()
@@ -127,7 +124,7 @@ class FormSimuladorWindow(customtkinter.CTkToplevel):
             print(f"\nProcessando Despesa: {despesa['description']} (Venc: {despesa_vencimento}, Valor: {despesa_valor:.2f})")
 
             candidatos_proventos = []
-            for provento in proventos_ordenados:
+            for provento in self.proventos_originais: # Iterar sobre a lista original de proventos
                 provento_id = provento['id']
                 provento_disponibilidade = self._get_provento_availability_date(provento)
                 saldo_atual_provento = saldos_proventos_simulados.get(provento_id, 0)
@@ -135,56 +132,63 @@ class FormSimuladorWindow(customtkinter.CTkToplevel):
                 # Critério 1: Data de disponibilidade do provento <= Vencimento da despesa
                 # Critério 2: Saldo do provento >= Valor da despesa
                 if provento_disponibilidade <= despesa_vencimento and saldo_atual_provento >= despesa_valor:
-                    candidatos_proventos.append(provento)
+                    candidatos_proventos.append(dict(provento)) # Adiciona uma cópia
             
             print(f"  Proventos candidatos para '{despesa['description']}': {len(candidatos_proventos)}")
 
             if candidatos_proventos:
                 # Estratégia de seleção:
-                # 1. Priorizar pagos
-                # 2. Menor saldo positivo restante após alocação
-                # 3. (Desempate) Data de disponibilidade mais próxima
+                # 1. Maior saldo restante no provento após alocação.
+                # 2. Desempate 1: Priorizar status 'Pago'.
+                # 3. Desempate 2: Data de disponibilidade mais antiga.
                 
-                melhor_provento = None
-                menor_saldo_restante_apos_alocacao = float('inf')
+                melhor_provento_para_alocar = None
+                maior_saldo_restante_calculado = -float('inf') # Começa com o menor valor possível
+                status_do_melhor_provento = "" 
+                data_disponibilidade_do_melhor_provento = datetime.date.max
 
                 for candidato in candidatos_proventos:
-                    saldo_candidato = saldos_proventos_simulados.get(candidato['id'], 0)
-                    saldo_apos = saldo_candidato - despesa_valor
-                    
-                    # Lógica de priorização e desempate
-                    if melhor_provento is None:
-                        melhor_provento = candidato
-                        menor_saldo_restante_apos_alocacao = saldo_apos
+                    saldo_candidato_simulado = saldos_proventos_simulados.get(candidato['id'], 0)
+                    saldo_apos_alocacao = saldo_candidato_simulado - despesa_valor
+                    status_candidato = candidato.get('status', 'Em Aberto')
+                    data_disponibilidade_candidato = self._get_provento_availability_date(candidato)
+
+                    if melhor_provento_para_alocar is None: # Primeiro candidato elegível
+                        melhor_provento_para_alocar = candidato
+                        maior_saldo_restante_calculado = saldo_apos_alocacao
+                        status_do_melhor_provento = status_candidato
+                        data_disponibilidade_do_melhor_provento = data_disponibilidade_candidato
                     else:
-                        # Prioriza pagos
-                        candidato_pago = candidato.get('status') == 'Pago'
-                        melhor_pago = melhor_provento.get('status') == 'Pago'
+                        # Critério principal: Maior saldo restante
+                        if saldo_apos_alocacao > maior_saldo_restante_calculado:
+                            melhor_provento_para_alocar = candidato
+                            maior_saldo_restante_calculado = saldo_apos_alocacao
+                            status_do_melhor_provento = status_candidato
+                            data_disponibilidade_do_melhor_provento = data_disponibilidade_candidato
+                        elif saldo_apos_alocacao == maior_saldo_restante_calculado:
+                            # Desempate 1: Status 'Pago'
+                            candidato_e_pago = (status_candidato == 'Pago')
+                            melhor_atual_e_pago = (status_do_melhor_provento == 'Pago')
 
-                        if candidato_pago and not melhor_pago:
-                            melhor_provento = candidato
-                            menor_saldo_restante_apos_alocacao = saldo_apos
-                        elif not candidato_pago and melhor_pago:
-                            continue # Mantém o melhor_provento atual (que é pago)
-                        else: # Ambos pagos ou ambos não pagos
-                            if saldo_apos < menor_saldo_restante_apos_alocacao:
-                                melhor_provento = candidato
-                                menor_saldo_restante_apos_alocacao = saldo_apos
-                            elif saldo_apos == menor_saldo_restante_apos_alocacao:
-                                # Desempate: data de disponibilidade mais próxima
-                                data_candidato = self._get_provento_availability_date(candidato)
-                                data_melhor = self._get_provento_availability_date(melhor_provento)
-                                if data_candidato > data_melhor: # Queremos a data mais próxima, então a maior data que ainda é <= vencimento
-                                    melhor_provento = candidato
-                                    # menor_saldo_restante_apos_alocacao não muda
+                            if candidato_e_pago and not melhor_atual_e_pago:
+                                melhor_provento_para_alocar = candidato
+                                status_do_melhor_provento = status_candidato
+                                data_disponibilidade_do_melhor_provento = data_disponibilidade_candidato
+                            elif not candidato_e_pago and melhor_atual_e_pago:
+                                pass # Mantém o atual que é pago
+                            else: # Ambos pagos ou ambos não pagos, vamos para o próximo desempate
+                                # Desempate 2: Data de disponibilidade mais antiga
+                                if data_disponibilidade_candidato < data_disponibilidade_do_melhor_provento:
+                                    melhor_provento_para_alocar = candidato
+                                    data_disponibilidade_do_melhor_provento = data_disponibilidade_candidato
                 
-                if melhor_provento:
-                    provento_id_escolhido = melhor_provento['id']
+                if melhor_provento_para_alocar:
+                    provento_id_escolhido = melhor_provento_para_alocar['id']
                     saldos_proventos_simulados[provento_id_escolhido] -= despesa_valor
-                    self.sugestoes_alocacao.append((despesa, melhor_provento))
+                    self.sugestoes_alocacao.append((despesa, melhor_provento_para_alocar))
                     alocado = True
-                    print(f"  ALOCADA: Despesa '{despesa['description']}' ao Provento '{melhor_provento['description']}'. Saldo provento restante: {saldos_proventos_simulados[provento_id_escolhido]:.2f}")
-
+                    print(f"  ALOCADA (Estratégia Maior Saldo Restante): Despesa '{despesa['description']}' ao Provento '{melhor_provento_para_alocar['description']}'. Saldo provento restante: {saldos_proventos_simulados[provento_id_escolhido]:.2f}")
+                    
             if not alocado:
                 self.despesas_nao_alocadas.append(despesa)
                 print(f"  NÃO ALOCADA: Despesa '{despesa['description']}'")
@@ -245,4 +249,3 @@ class FormSimuladorWindow(customtkinter.CTkToplevel):
             
             cor_saldo_sim = "lightgreen" if saldo_simulado >= 0 else "tomato"
             customtkinter.CTkLabel(frame_resumo, text=f"R$ {saldo_simulado:.2f}", font=FONTE_LABEL_PEQUENA, text_color=cor_saldo_sim, anchor="e").grid(row=0, column=3, sticky="ew", padx=5)
-
