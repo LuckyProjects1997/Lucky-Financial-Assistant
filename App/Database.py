@@ -74,6 +74,21 @@ def create_tables():
         print("DEBUG DB: Tabela 'transactions' criada/verificada.") # Added
         # Adicionar outras tabelas aqui no futuro (ex: categories, transactions)
 
+        # --- Verificação e Adição de Colunas (Migração Simples) ---
+        # Verificar se a coluna 'source_provento_id' existe na tabela 'transactions'
+        cursor.execute("PRAGMA table_info(transactions)")
+        columns = [column[1] for column in cursor.fetchall()] # Pega o nome da coluna (índice 1)
+
+        if 'source_provento_id' not in columns:
+            print("DEBUG DB: Coluna 'source_provento_id' não encontrada na tabela 'transactions'. Adicionando...")
+            try:
+                cursor.execute("ALTER TABLE transactions ADD COLUMN source_provento_id TEXT")
+                print("DEBUG DB: Coluna 'source_provento_id' adicionada com sucesso.")
+            except sqlite3.Error as e:
+                print(f"DEBUG DB: Erro ao adicionar coluna 'source_provento_id': {e}")
+        else:
+            print("DEBUG DB: Coluna 'source_provento_id' já existe na tabela 'transactions'.")
+
         conn.commit() # Salva as alterações no banco de dados.
         print("DEBUG DB: Commit realizado.") # Added
         print("Tabelas verificadas/criadas com sucesso.")
@@ -471,6 +486,7 @@ def get_transactions_for_month(user_id, year, month_number):
         SELECT
             t.id,
             t.description,
+            t.category_id, -- Adicionado category_id
             t.value,
             t.due_date,
             t.payment_date,
@@ -478,7 +494,8 @@ def get_transactions_for_month(user_id, year, month_number):
             t.modality,
             t.launch_date,
             t.installments,
-            c.name AS category_name,
+            t.source_provento_id, -- Adicionado source_provento_id
+            c.name AS category_name, 
             c.type AS category_type,
             c.color AS category_color
         FROM
@@ -500,7 +517,7 @@ def get_transactions_for_month(user_id, year, month_number):
     return [
         {
             "id": row["id"], "description": row["description"], "value": row["value"],
-            "due_date": row["due_date"], "payment_date": row["payment_date"],
+            "category_id": row["category_id"], "due_date": row["due_date"], "payment_date": row["payment_date"], "source_provento_id": row["source_provento_id"],
             "status": row["status"], "category_name": row["category_name"],
             "category_type": row["category_type"], "category_color": row["category_color"], "launch_date": row["launch_date"],
             "modality": row["modality"], "installments": row["installments"]

@@ -1,8 +1,15 @@
 # Main.py
 
 # Importa os módulos necessários do PySide6 para a interface gráfica.
-import sys # Usado para sair da aplicação.
-import os # Para interagir com o sistema operacional (reiniciar)
+import sys  # Usado para sair da aplicação e manipular sys.path
+import os   # Para interagir com o sistema operacional (reiniciar, caminhos)
+
+# Adiciona o diretório contendo este script ao sys.path
+# Isso ajuda a resolver importações de outros módulos dentro do mesmo diretório (pacote)
+script_dir = os.path.dirname(os.path.abspath(__file__))
+if script_dir not in sys.path:
+    sys.path.append(script_dir)
+
 import subprocess # Para iniciar um novo processo (reiniciar)
 from PySide6.QtWidgets import (QApplication, QWidget, QLabel, QComboBox, QMessageBox,
                                # Adicionado tk para tk.TclError

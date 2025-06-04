@@ -1,12 +1,15 @@
 import customtkinter
 import tkinter as tk
-import sys # Para resource_path
-import os  # Para resource_path
+import sys  # Para resource_path e manipulação de sys.path
+import os   # Para resource_path e manipulação de sys.path
+
+# print(f"DEBUG: sys.path in Dashboard.py before imports: {sys.path}") # Optional debug print
 from PIL import Image # Adicionado para carregar a imagem do logo
 import datetime # Para obter o ano atual 
 # from form_cadastro import FormCadastroWindow # Removido
 from form_cadastro_categoria import FormCadastroCategoriaWindow # Importa o formulário de categoria
-from form_detalhes_mensais import DetalhesMensaisView # ALTERADO: Importa a nova classe de visualização
+from form_detalhes_mensais import DetalhesMensaisView # Importa a classe de visualização de Detalhes Mensais
+from form_planejamento import PlanejamentoView # Importa a nova classe de visualização de Planejamento
 
 from form_transacao import FormTransacaoWindow # Importa a nova janela de formulário de transação
 # Importa as funções do nosso novo módulo de banco de dados (se necessário no futuro para o Dashboard).
@@ -161,7 +164,15 @@ class Dashboard(customtkinter.CTk):
                                                               corner_radius=sidebar_button_corner_radius,
                                                               fg_color=sidebar_button_fg_color, hover_color=sidebar_button_hover_color,
                                                               command=self._show_detalhes_mensais_view)
-        self.sidebar_buttons.append(self.sidebar_details_button)
+        self.sidebar_buttons.append(self.sidebar_details_button) # Keep this line
+
+        self.sidebar_planning_button = customtkinter.CTkButton(self.sidebar_frame, text="Planejamento",
+                                                              font=sidebar_button_font, height=sidebar_button_height,
+                                                              corner_radius=sidebar_button_corner_radius,
+                                                              fg_color=sidebar_button_fg_color, hover_color=sidebar_button_hover_color, # Comando para mostrar a view de Planejamento
+                                                              command=self._show_planejamento_view)
+        self.sidebar_buttons.append(self.sidebar_planning_button)
+
 
         self.sidebar_transaction_button = customtkinter.CTkButton(self.sidebar_frame, text="Nova Despesa/Provento",
                                                                   font=sidebar_button_font, height=sidebar_button_height,
@@ -333,7 +344,7 @@ class Dashboard(customtkinter.CTk):
         self._refresh_dashboard_data() # Garante que os dados estejam atualizados
 
     def _show_detalhes_mensais_view(self):
-        """Limpa a área de conteúdo e mostra a visualização de Detalhes Mensais."""
+        """Wrapper para _actual_show_detalhes_mensais_view para garantir o contexto 'self'."""
         selected_year = self.year_combobox.get()
         if not self.current_user_id or not selected_year:
             print("Dashboard: Usuário ou ano não selecionado para abrir detalhes.")
@@ -344,11 +355,26 @@ class Dashboard(customtkinter.CTk):
         self._clear_main_content_area()
         self.header_frame.grid_remove()
         # self.actions_container_frame.grid_remove() # Não existe mais
-
+    
         detalhes_view = DetalhesMensaisView(master=self.main_content_area, current_user_id=self.current_user_id, 
                                             selected_year=selected_year, close_callback=self._show_dashboard_view,
                                             main_dashboard_refresh_callback=self._refresh_dashboard_data)
         detalhes_view.pack(expand=True, fill="both")
+
+    def _show_planejamento_view(self):
+        """Wrapper para _actual_show_planejamento_view para garantir o contexto 'self'."""
+        selected_year = self.year_combobox.get()
+        if not self.current_user_id or not selected_year:
+            print("Dashboard: Usuário ou ano não selecionado para abrir planejamento.")
+            return
+
+        self._clear_main_content_area()
+        self.header_frame.grid_remove()
+
+        planejamento_view = PlanejamentoView(master=self.main_content_area, current_user_id=self.current_user_id,
+                                             selected_year=selected_year, close_callback=self._show_dashboard_view,
+                                             main_dashboard_refresh_callback=self._refresh_dashboard_data)
+        planejamento_view.pack(expand=True, fill="both")
 
     def open_form_transacao(self, tipo_transacao):
         if self.form_transacao_window is None or not self.form_transacao_window.winfo_exists():
@@ -775,6 +801,7 @@ class Dashboard(customtkinter.CTk):
             self.load_monthly_details_for_list_container()
             self.load_monthly_proventos_summary()
             self._load_monthly_pie_chart_data()
+
 if __name__ == "__main__":
     app = Dashboard(user_id="test_user_01") # Passa um user_id para teste
     app.mainloop()

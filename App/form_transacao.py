@@ -6,8 +6,8 @@ import uuid # Para gerar IDs únicos
 # Importa as funções do banco de dados
 import Database # Usando 'Database' com D maiúsculo conforme seu Main.py
 from CTkMessagebox import CTkMessagebox # Adicionado para exibir alertas
-# Importa a janela de formulário de cadastro de categorias/usuários
-from form_cadastro import FormCadastroWindow
+# Importa a janela de formulário de cadastro de categoria
+from form_cadastro_categoria import FormCadastroCategoriaWindow
 
 # Definições de fonte padrão para o Formulário de Transação
 FONTE_FAMILIA = "Segoe UI"
@@ -328,7 +328,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
                 self.attributes("-topmost", True) # Garante que a janela de transação volte ao topo
                 self.focus_force() # Força o foco de volta
 
-            self.form_cadastro_ref = FormCadastroWindow(master=self, current_user_id=self.current_user_id)
+            self.form_cadastro_ref = FormCadastroCategoriaWindow(master=self, current_user_id=self.current_user_id, on_close_callback=on_category_form_closed_callback)
             self.form_cadastro_ref.on_close_callback = on_category_form_closed_callback
             self.form_cadastro_ref.protocol("WM_DELETE_WINDOW", on_category_form_closed_callback)
             self.form_cadastro_ref.focus()
