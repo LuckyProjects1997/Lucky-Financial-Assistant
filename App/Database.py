@@ -65,6 +65,7 @@ def create_tables():
                 modality TEXT,         -- 'À vista', 'Parcelado'
                 installments TEXT,     -- Formato "1/N", "2/N", etc. ou NULL/ "1/1" para à vista
                 source_provento_id TEXT, -- ID do provento que pagou esta despesa
+                transaction_group_id TEXT, -- NOVO: Para agrupar transações fixas ou parceladas
                 launch_date TEXT NOT NULL, -- Data de cadastro da transação
                 FOREIGN KEY (user_id) REFERENCES users (id),
                 FOREIGN KEY (category_id) REFERENCES categories (id),
@@ -88,6 +89,16 @@ def create_tables():
                 print(f"DEBUG DB: Erro ao adicionar coluna 'source_provento_id': {e}")
         else:
             print("DEBUG DB: Coluna 'source_provento_id' já existe na tabela 'transactions'.")
+
+        if 'transaction_group_id' not in columns:
+            print("DEBUG DB: Coluna 'transaction_group_id' não encontrada na tabela 'transactions'. Adicionando...")
+            try:
+                cursor.execute("ALTER TABLE transactions ADD COLUMN transaction_group_id TEXT")
+                print("DEBUG DB: Coluna 'transaction_group_id' adicionada com sucesso.")
+            except sqlite3.Error as e:
+                print(f"DEBUG DB: Erro ao adicionar coluna 'transaction_group_id': {e}")
+        else:
+            print("DEBUG DB: Coluna 'transaction_group_id' já existe na tabela 'transactions'.")
 
         conn.commit() # Salva as alterações no banco de dados.
         print("DEBUG DB: Commit realizado.") # Added
@@ -192,7 +203,7 @@ def update_category(category_id, name, category_type, color):
         return False
     finally:
         conn.close()
-def add_transaction(transaction_id_base, user_id, category_id, original_description, total_value, initial_due_date, initial_payment_date=None, initial_status=None, modality=None, num_installments=None, source_provento_id=None, launch_date=None):
+def add_transaction(transaction_id_base, user_id, category_id, original_description, total_value, initial_due_date, initial_payment_date=None, initial_status=None, modality=None, num_installments=None, source_provento_id=None, launch_date=None, transaction_group_id=None):
     """Adiciona uma nova transação ao banco de dados.
     Se for parcelado, cria múltiplas entradas.
     initial_due_date e launch_date devem estar no formato YYYY-MM-DD.
@@ -202,6 +213,9 @@ def add_transaction(transaction_id_base, user_id, category_id, original_descript
     
     if launch_date is None:
         launch_date = datetime.date.today().strftime("%Y-%m-%d")
+    
+    # Se transaction_group_id não for fornecido, usa transaction_id_base (para parcelados) ou o próprio ID (para únicos)
+    group_id_to_save = transaction_group_id if transaction_group_id else transaction_id_base
 
     print(f"DEBUG Database.add_transaction: Received modality: '{modality}', num_installments: {num_installments}")
     try:
@@ -244,9 +258,9 @@ def add_transaction(transaction_id_base, user_id, category_id, original_descript
                     due_date_for_this_installment_str = current_installment_due_date_obj.strftime("%Y-%m-%d")
                 
                 cursor.execute("""
-                    INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date, status, modality, installments, source_provento_id, launch_date)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (transaction_id, user_id, category_id, description_with_installment, current_value_for_db, due_date_for_this_installment_str, payment_date_for_this_installment, status_for_this_installment, modality, installments_str_for_db, source_provento_id if parcel_number == 1 else None, launch_date)) # source_provento_id só na primeira parcela
+                    INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date, status, modality, installments, source_provento_id, transaction_group_id, launch_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (transaction_id, user_id, category_id, description_with_installment, current_value_for_db, due_date_for_this_installment_str, payment_date_for_this_installment, status_for_this_installment, modality, installments_str_for_db, source_provento_id if parcel_number == 1 else None, group_id_to_save, launch_date)) # source_provento_id só na primeira parcela
                 
                 if cursor.rowcount == 0:
                     all_successful = False
@@ -258,9 +272,9 @@ def add_transaction(transaction_id_base, user_id, category_id, original_descript
                  description_final = f"{original_description} (1/1)"
 
             cursor.execute("""
-                INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date, status, modality, installments, source_provento_id, launch_date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (transaction_id_base, user_id, category_id, description_final, total_value, initial_due_date, initial_payment_date, initial_status, modality, installments_display, source_provento_id, launch_date))
+                INSERT OR IGNORE INTO transactions (id, user_id, category_id, description, value, due_date, payment_date, status, modality, installments, source_provento_id, transaction_group_id, launch_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (transaction_id_base, user_id, category_id, description_final, total_value, initial_due_date, initial_payment_date, initial_status, modality, installments_display, source_provento_id, group_id_to_save, launch_date))
             if cursor.rowcount == 0:
                 all_successful = False
                 print(f"Transação à vista com ID '{transaction_id_base}' já existe ou não pôde ser adicionada.")
@@ -277,32 +291,48 @@ def add_transaction(transaction_id_base, user_id, category_id, original_descript
         print(f"Erro inesperado ao adicionar transação: {e}")
         return False
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
-def delete_transaction(transaction_id):
+def delete_transaction(transaction_id, scope="group", is_fixed_group=False):
     """Exclui uma transação do banco de dados.
-    Se a transação for parte de um parcelamento, todas as parcelas relacionadas são excluídas.
-    """
+    Se scope='group' e is_fixed_group=True, exclui apenas recorrências 'Em Aberto'.
+    Se scope='group' e is_fixed_group=False (parcelamento normal), exclui todas as parcelas."""
     conn = get_db_connection()
     cursor = conn.cursor()
     deleted_count = 0
     try:
         print(f"DEBUG DB: Attempting to delete transaction(s) related to ID: {transaction_id}")
-        # Determina o ID base da transação
-        # Se o ID contém '-', é provável que seja uma parcela (ex: base_id-1)
-        # Caso contrário, é uma transação à vista ou a própria base de um parcelamento antigo.
-        parts = transaction_id.split('-')
-        if len(parts) > 1 and parts[-1].isdigit(): # Verifica se a última parte é um número (indicando parcela)
-            transaction_id_base = '-'.join(parts[:-1])
-            print(f"DEBUG DB: Detected parcel. Base ID: {transaction_id_base}. Deleting base and all installments like '{transaction_id_base}-%'.")
-            # Exclui todas as parcelas e a transação base (se existir com o mesmo ID base)
-            cursor.execute("DELETE FROM transactions WHERE id = ? OR id LIKE ?", (transaction_id_base, transaction_id_base + '-%'))
+
+        if scope == "single":
+            print(f"DEBUG DB: Scope is 'single'. Deleting only transaction ID: {transaction_id}")
+            cursor.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
+        elif scope == "group":
+            # Primeiro, busca a transação para obter seu transaction_group_id
+            cursor.execute("SELECT transaction_group_id FROM transactions WHERE id = ?", (transaction_id,))
+            result = cursor.fetchone()
+
+            if result and result['transaction_group_id']:
+                group_id_to_delete = result['transaction_group_id']
+                if is_fixed_group:
+                    print(f"DEBUG DB: Scope is 'group' (FIXED). Deleting 'Em Aberto' transactions in group {group_id_to_delete}.")
+                    cursor.execute("DELETE FROM transactions WHERE transaction_group_id = ? AND status = 'Em Aberto'", (group_id_to_delete,))
+                else: # Regular installment group or non-fixed group
+                    print(f"DEBUG DB: Scope is 'group' (REGULAR/NON-FIXED). Transaction ID {transaction_id} belongs to group {group_id_to_delete}. Deleting all transactions in this group.")
+                    cursor.execute("DELETE FROM transactions WHERE transaction_group_id = ?", (group_id_to_delete,))
+            else:
+                # Se não houver transaction_group_id ou a transação não for encontrada (para o group scope),
+                # tenta a lógica antiga de exclusão por ID ou ID base (para parcelamentos antigos sem group_id explícito)
+                print(f"DEBUG DB: Scope is 'group', but transaction ID {transaction_id} has no group_id or not found. Attempting old deletion logic for potential installments.")
+                parts = transaction_id.split('-')
+                if len(parts) > 1 and parts[-1].isdigit(): #  Ex: base_id-1
+                    transaction_id_base = '-'.join(parts[:-1])
+                    cursor.execute("DELETE FROM transactions WHERE id = ? OR id LIKE ?", (transaction_id_base, transaction_id_base + '-%'))
+                else: # Transação única ou base de parcelamento antigo
+                    cursor.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
         else:
-            transaction_id_base = transaction_id # The passed ID is the base
-            print(f"DEBUG DB: Detected non-parcel or base ID: {transaction_id_base}. Deleting this ID and all installments like '{transaction_id_base}-%'.")
-            # Transação à vista ou um ID base sem parcelas numeradas explicitamente
-            # Também cobre o caso de excluir uma transação base que pode ter parcelas (o LIKE acima cuidaria das parcelas)
-            cursor.execute("DELETE FROM transactions WHERE id = ? OR id LIKE ?", (transaction_id_base, transaction_id_base + '-%'))
+            print(f"DEBUG DB: Invalid scope '{scope}' provided. No deletion performed.")
+            return False
 
         deleted_count = cursor.rowcount
         conn.commit()
@@ -311,13 +341,14 @@ def delete_transaction(transaction_id):
             print(f"DEBUG DB: Successfully deleted {deleted_count} transaction(s) related to base ID derived from '{transaction_id}'.")
             return True
         else:
-            print(f"DEBUG DB: No transactions found to delete related to base ID derived from '{transaction_id}'.")
+            print(f"DEBUG DB: No transactions found to delete for ID '{transaction_id}' or its group.")
             return False
     except sqlite3.Error as e:
         print(f"Erro ao excluir transação ID '{transaction_id}': {e}")
         return False
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 def delete_category(category_id):
     """Exclui uma categoria do banco de dados pelo seu ID."""
@@ -336,7 +367,8 @@ def delete_category(category_id):
         print(f"Erro ao excluir categoria: {e}")
         return False
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 def delete_all_users():
     """Deleta todos os usuários da tabela users."""
@@ -356,7 +388,8 @@ def delete_all_users():
         print("Considere deletar dados relacionados (categorias, transações) primeiro, se necessário.")
         return False
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 def delete_user_by_name(name):
     """Exclui um usuário do banco de dados pelo seu nome."""
     conn = get_db_connection()
@@ -374,7 +407,8 @@ def delete_user_by_name(name):
         print(f"Erro ao excluir usuário '{name}': {e}")
         return False
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 def get_monthly_expenses_by_category_for_year(user_id, year):
     """
@@ -404,7 +438,8 @@ def get_monthly_expenses_by_category_for_year(user_id, year):
     """
     cursor.execute(query, (user_id, str(year)))
     results = cursor.fetchall()
-    conn.close()
+    if conn:
+        conn.close()
     return results
 
 def get_category_summary_for_month(user_id, year, month_number):
@@ -438,7 +473,8 @@ def get_category_summary_for_month(user_id, year, month_number):
     cursor.execute(query, (user_id, str(year), month_number))
     results = cursor.fetchall()
     print(f"DEBUG DB: get_category_summary_for_month (SUM) - Raw results: {results}")
-    conn.close()
+    if conn:
+        conn.close()
     return results
 
 def get_category_totals_for_year(user_id, year, category_type):
@@ -471,7 +507,8 @@ def get_category_totals_for_year(user_id, year, category_type):
     """
     cursor.execute(query, (user_id, str(year), category_type))
     results = cursor.fetchall()
-    conn.close()
+    if conn:
+        conn.close()
     return [{"category_name": row["category_name"], "category_color": row["category_color"], "total_value": row["total_value"]} for row in results]
 def get_transactions_for_month(user_id, year, month_number):
     """
@@ -494,6 +531,7 @@ def get_transactions_for_month(user_id, year, month_number):
             t.modality,
             t.launch_date,
             t.installments,
+            t.transaction_group_id, -- Adicionado transaction_group_id
             t.source_provento_id, -- Adicionado source_provento_id
             c.name AS category_name, 
             c.type AS category_type,
@@ -512,13 +550,14 @@ def get_transactions_for_month(user_id, year, month_number):
     cursor.execute(query, (user_id, str(year), month_number))
     results = cursor.fetchall()
     print(f"DEBUG DB: get_transactions_for_month (DETAILS) - Raw results: {results}")
-    conn.close()
+    if conn:
+        conn.close()
     # Converte os objetos Row para dicionários, incluindo os novos campos
     return [
         {
             "id": row["id"], "description": row["description"], "value": row["value"],
             "category_id": row["category_id"], "due_date": row["due_date"], "payment_date": row["payment_date"], "source_provento_id": row["source_provento_id"],
-            "status": row["status"], "category_name": row["category_name"],
+            "status": row["status"], "category_name": row["category_name"], "transaction_group_id": row["transaction_group_id"],
             "category_type": row["category_type"], "category_color": row["category_color"], "launch_date": row["launch_date"],
             "modality": row["modality"], "installments": row["installments"]
         }
@@ -543,6 +582,7 @@ def get_transaction_by_id(transaction_id):
             t.installments,
             t.launch_date,
             t.source_provento_id,
+            t.transaction_group_id,
             c.name AS category_name,
             c.type AS category_type 
         FROM
@@ -554,7 +594,8 @@ def get_transaction_by_id(transaction_id):
     """
     cursor.execute(query, (transaction_id,))
     transaction = cursor.fetchone()
-    conn.close()
+    if conn:
+        conn.close()
     if transaction:
         transaction_dict = dict(transaction)
         print(f"DEBUG Database.get_transaction_by_id: Retrieved transaction data: {transaction_dict}")
@@ -582,7 +623,8 @@ def update_transaction(transaction_id, description, value, due_date, payment_dat
         print(f"Erro ao atualizar transação ID '{transaction_id}': {e}")
         return False
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 def get_spendable_proventos(user_id):
     """
@@ -623,7 +665,8 @@ def get_spendable_proventos(user_id):
     """
     cursor.execute(query, (user_id,))
     proventos = cursor.fetchall()
-    conn.close()
+    if conn:
+        conn.close()
     return [dict(row) for row in proventos]
 
 

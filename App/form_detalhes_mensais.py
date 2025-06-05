@@ -166,6 +166,19 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
         self.summary_title_label.configure(text=f"Resumo de {month_name}") # Atualiza o novo título do resumo
         self._display_month_transactions() # Popula as tabelas de Despesas e Proventos
 
+        # Calcular Saldo em Conta (Proventos Pagos - Despesas Pagas)
+        total_proventos_pagos_valor = sum(
+            t['value'] for t in self.all_transactions_for_month
+            if t['category_type'] == 'Provento' and t['status'] == 'Pago'
+        )
+        total_despesas_pagas_valor = sum(
+            t['value'] for t in self.all_transactions_for_month
+            if t['category_type'] == 'Despesa' and t['status'] == 'Pago'
+        )
+        saldo_em_conta = total_proventos_pagos_valor - total_despesas_pagas_valor
+        cor_saldo_em_conta = "lightgreen" if saldo_em_conta >= 0 else "tomato"
+
+
         # --- Popular Resumo (Lista de Categorias e Totais Laterais) ---
         summary_data = get_category_summary_for_month(user_id, year, month_number)
         total_despesas = 0
@@ -234,6 +247,10 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
         # Total Proventos (no frame lateral)
         total_proventos_label = customtkinter.CTkLabel(monthly_totals_side_frame, text=f"Total Proventos: R$ {total_proventos:.2f}", font=FONTE_LABEL_BOLD, text_color="lightgreen")
         total_proventos_label.pack(anchor="w", padx=10, pady=(0,5)) # Adicionado padx e pady inferior
+
+        # Saldo em Conta (NOVO CAMPO)
+        customtkinter.CTkLabel(monthly_totals_side_frame, text=f"Saldo em Conta: R$ {saldo_em_conta:.2f}", font=FONTE_LABEL_BOLD, text_color=cor_saldo_em_conta).pack(anchor="w", pady=(5,5), padx=10)
+
 
         # Saldo (no frame lateral)
         saldo = total_proventos - total_despesas
@@ -356,13 +373,19 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
         print(f"DEBUG DetalhesMensais: Abrindo consulta para transação ID: {transaction_id}")
         if self.form_consulta_transacao_window is None or not self.form_consulta_transacao_window.winfo_exists():
             self.form_consulta_transacao_window = FormConsultaTransacaoWindow(
-                master=self, # O master é esta janela de DetalhesMensais
+                master=self.winfo_toplevel(), # CHANGED: Master is now the top-level window (Dashboard)
                 transaction_id=transaction_id,
                 on_action_completed_callback=self._refresh_after_action # Passa o método de refresh
             )
-            self.form_consulta_transacao_window.focus() # Traz a nova janela para o foco
+            # Check if the window initialized successfully and still exists before focusing
+            if getattr(self.form_consulta_transacao_window, '_initialization_successful', False) and \
+               self.form_consulta_transacao_window.winfo_exists():
+                self.form_consulta_transacao_window.focus()
+            # Else: The window might be self-destructing due to initialization failure,
+            # so no need to focus it. It will show an error message and close itself.
         else:
-            self.form_consulta_transacao_window.focus() # Se a janela já existe, apenas a traz para o foco
+            if self.form_consulta_transacao_window.winfo_exists(): # Good to keep this check for existing windows
+                self.form_consulta_transacao_window.focus() # Se a janela já existe, apenas a traz para o foco
 
     def _open_form_transacao(self, tipo_transacao):
         """Abre o formulário de cadastro de transação."""

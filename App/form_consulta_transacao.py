@@ -37,22 +37,29 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
         self.title("Consulta de Transação")
         self.geometry("450x600")
         self.configure(fg_color="#1c1c1c")
-        self.lift()
-        self.attributes("-topmost", True)
         # self.grab_set() # Pode causar problemas com CTkMessagebox se não gerenciado cuidadosamente
 
         self.transaction_id = transaction_id
         self.on_action_completed_callback = on_action_completed_callback
         self.transaction_data = None
         self.is_editing = False
+        self._initialization_successful = True  # Flag to indicate successful initialization
 
         self.field_elements = {} # Armazenará dicts com 'display', 'input', 'icon' para campos editáveis
         self.status_var = customtkinter.StringVar()
-
         self.pencil_icon_image = None # Atributo para armazenar a imagem do ícone
 
         self._load_icons() # Carrega os ícones
-        self._load_transaction_data()
+        self._load_transaction_data() # This can set _initialization_successful to False
+
+        if not self._initialization_successful:
+            # If _load_transaction_data failed and scheduled destruction,
+            # we should not proceed to build the UI or lift/topmost.
+            return # Exit __init__ early
+
+        # Proceed with lift, topmost, and UI setup only if initialization was successful
+        self.lift()
+        self.attributes("-topmost", True)
         self._setup_ui()
 
     def _load_icons(self):
@@ -94,9 +101,17 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
     def _load_transaction_data(self):
         if self.transaction_id:
             self.transaction_data = Database.get_transaction_by_id(self.transaction_id)
+
         if not self.transaction_data:
-            CTkMessagebox(title="Erro", message="Não foi possível carregar os dados da transação.", icon="cancel", master=self)
+            self._initialization_successful = False # Signal failure
+            # Only show messagebox if transaction_id was provided but failed to load
+            if self.transaction_id:
+                CTkMessagebox(title="Erro", message="Não foi possível carregar os dados da transação.", icon="cancel", master=self)
+            else: # transaction_id was None to begin with, or some other issue
+                CTkMessagebox(title="Erro", message="ID da transação inválido ou dados não encontrados.", icon="cancel", master=self)
+
             self.after(100, self.destroy) # Fecha a janela após um pequeno delay
+            return # Return early as initialization failed
 
     def _setup_ui(self):
         if not self.transaction_data:
@@ -124,7 +139,10 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             ("Modalidade:", "modality", "label_only", False),
             ("Parcela:", "installments", "label_only", False), # Mantido como label_only
             ("Valor Total:", "total_value_compra", "label_only", False), # Mantido como label_only
-            ("Valor (R$):", "value", "entry", lambda data: data.get('category_type') == 'Provento'), # ALTERADO: Agora é entry e alterável APENAS para Provento
+            ("Valor (R$):", "value", "entry", 
+                lambda data: data.get('category_type') == 'Provento' and \
+                             data.get('status') == 'Em Aberto'
+            ), # ALTERADO: Editável se Provento E Em Aberto
             ("Status:", "status", "radios_status", True),
             ("Data Prevista:", "due_date", "entry", True),
             ("Data Pagamento:", "payment_date", "entry", True),
@@ -405,27 +423,59 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             return
 
         desc = self.transaction_data.get("description", "esta transação")
-        msg_box = CTkMessagebox(
-            master=self, # Set master for better modality and event handling
-            title="Confirmar Exclusão",
-            message=f"Tem certeza que deseja excluir a transação:\n'{desc}'?",
-            icon="warning",
-            option_1="Cancelar",
-            option_2="Excluir"
-        )
-        
-        response = msg_box.get() # Bloqueia até o usuário clicar
+        is_fixed_transaction = "(Fixo)" in desc and self.transaction_data.get('transaction_group_id')
 
-        print(f"DEBUG: CTkMessagebox response: '{response}'")
+        delete_scope = "group" # Padrão para excluir o grupo (parcelados ou fixos inteiros)
+        proceed_with_delete = False
 
-        # Se o usuário clicou no botão "Excluir" do pop-up
-        if response == "Excluir":
-            print(f"DEBUG: Proceeding with delete for transaction ID: {self.transaction_id} because response was 'Excluir'.")
+        if is_fixed_transaction:
+            msg_box_fixed = CTkMessagebox(
+                master=self,
+                title="Excluir Transação Fixa",
+                message=f"'{desc}' é uma transação fixa.\nComo deseja excluir?",
+                icon="question",
+                options=["Apenas esta", "Todas as recorrências", "Cancelar"]
+            )
+            response_fixed = msg_box_fixed.get()
+            if response_fixed == "Apenas esta":
+                delete_scope = "single"
+                proceed_with_delete = True
+            elif response_fixed == "Todas as recorrências":
+                delete_scope = "group"
+                proceed_with_delete = True
+            else: # Cancelar ou fechou
+                proceed_with_delete = False
+        else: # Transação não é "Fixo" (pode ser parcelado normal ou à vista)
+            msg_box_normal = CTkMessagebox(
+                master=self,
+                title="Confirmar Exclusão",
+                message=f"Tem certeza que deseja excluir a transação:\n'{desc}'?\n(Se for parcelada, todas as parcelas serão excluídas)",
+                icon="warning",
+                options=["Cancelar", "Excluir"] # Manter ordem para que "Excluir" seja a segunda opção
+            )
+            response_normal = msg_box_normal.get()
+            if response_normal == "Excluir":
+                delete_scope = "group" # Para parcelados, sempre exclui o grupo
+                proceed_with_delete = True
+            else: # Cancelar ou fechou
+                proceed_with_delete = False
+
+        if proceed_with_delete:
+            print(f"DEBUG: Proceeding with delete for transaction ID: {self.transaction_id} with scope: {delete_scope}")
             try:
-                success = Database.delete_transaction(self.transaction_id)
+                success = Database.delete_transaction(self.transaction_id, scope=delete_scope, is_fixed_group=is_fixed_transaction)
                 if success:
-                    CTkMessagebox(title="Sucesso", message="Transação excluída com sucesso!", icon="check", master=self.master) # master=self.master para aparecer sobre o Dashboard
-                    if self.on_action_completed_callback: 
+                    # Ajusta a mensagem de sucesso
+                    if delete_scope == "single":
+                        message_suffix = "excluída"
+                    elif is_fixed_transaction and delete_scope == "group":
+                        message_suffix = "e suas recorrências em aberto foram excluídas"
+                    elif not is_fixed_transaction and delete_scope == "group": # Parcelamento normal
+                        message_suffix = "e suas parcelas foram excluídas"
+                    else: # Fallback
+                        message_suffix = "processada"
+                    CTkMessagebox(title="Sucesso", message=f"Transação {message_suffix} com sucesso!", icon="check", master=self.master)
+                    if self.on_action_completed_callback:
                         self.on_action_completed_callback()
                     self.destroy()
                 else:
@@ -433,10 +483,9 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             except Exception as e:
                 print(f"ERRO CRÍTICO durante a exclusão: {e}")
                 CTkMessagebox(title="Erro Crítico", message=f"Ocorreu um erro inesperado durante a exclusão:\n{e}", icon="cancel", master=self)
-        elif response == "Cancelar":
-            print(f"DEBUG: Exclusão cancelada pelo usuário (response: '{response}')")
         else:
-            print(f"DEBUG: Ação de exclusão não confirmada ou pop-up fechado. Resposta: '{response}'")
+            print(f"DEBUG: Exclusão cancelada pelo usuário ou não aplicável.")
+
 
     def _enable_field_edit(self, key):
         if key not in self.field_elements:
