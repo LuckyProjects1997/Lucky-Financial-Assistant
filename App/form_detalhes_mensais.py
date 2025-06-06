@@ -178,6 +178,19 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
         saldo_em_conta = total_proventos_pagos_valor - total_despesas_pagas_valor
         cor_saldo_em_conta = "lightgreen" if saldo_em_conta >= 0 else "tomato"
 
+        # Calcular Total "A Pagar" (Despesas "Em Aberto")
+        total_a_pagar_valor = sum(
+            t['value'] for t in self.all_transactions_for_month
+            if t['category_type'] == 'Despesa' and t['status'] == 'Em Aberto'
+        )
+
+        # Calcular Totais por Meio de Pagamento
+        total_cartao_credito = sum(
+            t['value'] for t in self.all_transactions_for_month if t['category_type'] == 'Despesa' and t['status'] == 'Pago' and t['payment_method'] == 'Cartão de Crédito'
+        )
+        total_conta_corrente = sum(
+            t['value'] for t in self.all_transactions_for_month if t['category_type'] == 'Despesa' and t['status'] == 'Pago' and t['payment_method'] == 'Conta Corrente'
+        )
 
         # --- Popular Resumo (Lista de Categorias e Totais Laterais) ---
         summary_data = get_category_summary_for_month(user_id, year, month_number)
@@ -248,9 +261,17 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
         total_proventos_label = customtkinter.CTkLabel(monthly_totals_side_frame, text=f"Total Proventos: R$ {total_proventos:.2f}", font=FONTE_LABEL_BOLD, text_color="lightgreen")
         total_proventos_label.pack(anchor="w", padx=10, pady=(0,5)) # Adicionado padx e pady inferior
 
+        # Total Cartão de Crédito (NOVO CAMPO)
+        customtkinter.CTkLabel(monthly_totals_side_frame, text=f"Cartão de Crédito: R$ {total_cartao_credito:.2f}", font=FONTE_LABEL_BOLD, text_color="orange").pack(anchor="w", pady=(5,5), padx=10)
+
+        # Total Pago em Conta (NOVO CAMPO)
+        customtkinter.CTkLabel(monthly_totals_side_frame, text=f"Pago em Conta: R$ {total_conta_corrente:.2f}", font=FONTE_LABEL_BOLD, text_color="cyan").pack(anchor="w", pady=(5,5), padx=10)
+
+        # Total "A Pagar" (NOVO CAMPO)
+        customtkinter.CTkLabel(monthly_totals_side_frame, text=f"A Pagar: R$ {total_a_pagar_valor:.2f}", font=FONTE_LABEL_BOLD, text_color="yellow").pack(anchor="w", pady=(5,5), padx=10)
+
         # Saldo em Conta (NOVO CAMPO)
         customtkinter.CTkLabel(monthly_totals_side_frame, text=f"Saldo em Conta: R$ {saldo_em_conta:.2f}", font=FONTE_LABEL_BOLD, text_color=cor_saldo_em_conta).pack(anchor="w", pady=(5,5), padx=10)
-
 
         # Saldo (no frame lateral)
         saldo = total_proventos - total_despesas
@@ -279,12 +300,12 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
             return
 
         # Cabeçalhos
-        col_weights = [1, 3, 2, 1, 1, 1, 1, 1]
-        headers = ["Data", "Descrição", "Categoria", "V. Parcela", "V. Total", "Status", "Modalidade", "Parcela"]
+        col_weights = [1, 3, 2, 1, 1, 1, 1, 1, 1] # Adicionada uma coluna para Forma de Pagamento
+        headers = ["Data", "Descrição", "Categoria", "V. Parcela", "V. Total", "Status", "Modalidade", "Parcela", "Forma Pag."]
 
         for i, header_text in enumerate(headers):
             parent_frame.grid_columnconfigure(i, weight=col_weights[i])
-            anchor_val = "w" if header_text in ["Descrição", "Categoria", "V. Parcela", "V. Total"] else "center"
+            anchor_val = "w" if header_text in ["Descrição", "Categoria", "V. Parcela", "V. Total", "Forma Pag."] else "center"
             customtkinter.CTkLabel(
                 parent_frame,
                 text=header_text,
@@ -350,6 +371,12 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
             # Parcela
             widgets.append(customtkinter.CTkLabel(
                 parent_frame, text=trans.get('installments', '-'), font=FONTE_LABEL_PEQUENA, anchor="center"
+            ))
+
+            # Forma de Pagamento (NOVA COLUNA)
+            payment_method_display = trans.get('payment_method', '-') if trans.get('status') == 'Pago' else '-'
+            widgets.append(customtkinter.CTkLabel(
+                parent_frame, text=payment_method_display, font=FONTE_LABEL_PEQUENA, anchor="w"
             ))
 
             # Adiciona os widgets na grid e vincula o clique

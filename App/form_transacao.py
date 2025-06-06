@@ -44,7 +44,8 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
         self.real_categories_map = {} # Para mapear nome de exibição para objeto de categoria real
         self.previous_category_selection = "Selecione a Categoria" # Para reverter seleção de título
         self.fixed_checkbox_var = customtkinter.BooleanVar(value=False) # Para o campo "Fixo" (Checkbox)
-        self.form_cadastro_ref = None # Referência para a janela de cadastro de categoria
+        self.form_cadastro_category_ref = None # Referência para a janela de cadastro de categoria
+        self.payment_method_var = customtkinter.StringVar(value=None) # Para os radio buttons do meio de pagamento
 
         # --- Frame Principal ---
         main_frame = customtkinter.CTkFrame(self, fg_color="transparent")
@@ -59,7 +60,8 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
         main_frame.grid_rowconfigure(5, weight=0)  # link_cadastrar_categoria (Mantido na row 5)
         main_frame.grid_rowconfigure(6, weight=0)  # financial_details_frame (Movido para row 6)
         main_frame.grid_rowconfigure(7, weight=0)  # status_and_date_frame (Movido para row 7)
-        main_frame.grid_rowconfigure(8, weight=0)  # fixed_checkbox_frame (NOVO: Checkbox Fixo na row 8)
+        main_frame.grid_rowconfigure(8, weight=0)  # payment_method_frame (NOVO: Meio de Pagamento na row 8)
+        main_frame.grid_rowconfigure(9, weight=0)  # fixed_checkbox_frame (Movido para row 9)
         main_frame.grid_rowconfigure(9, weight=0)  # action_buttons_frame
 
         title_label = customtkinter.CTkLabel(main_frame, text="Cadastrar Nova Transação", font=FONTE_TITULO_FORM)
@@ -77,8 +79,8 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
 
         # MOVIDO PARA CIMA: Criar self.fixed_checkbox_frame ANTES do ComboBox de categoria ser configurado com .set()
         # Isso evita AttributeError se o .set() inicial do ComboBox disparar o command que usa fixed_checkbox_frame.
-        self.fixed_checkbox_frame = customtkinter.CTkFrame(main_frame, fg_color="transparent")
-        self.fixed_checkbox_frame.grid(row=8, column=0, sticky="ew", padx=10, pady=(5,5)) # Posicionado na Row 8
+        self.fixed_checkbox_frame = customtkinter.CTkFrame(main_frame, fg_color="transparent") # Será posicionado na row 9
+        # self.fixed_checkbox_frame.grid(row=9, column=0, sticky="ew", padx=10, pady=(5,5)) # Posicionado na Row 9
         self.fixed_checkbox = customtkinter.CTkCheckBox(self.fixed_checkbox_frame, text="Fixo", variable=self.fixed_checkbox_var, font=FONTE_LABEL_FORM, command=self._fixed_checkbox_changed)
         self.fixed_checkbox.pack(anchor="w") # Alinha a checkbox à esquerda
         self.fixed_checkbox_frame.grid_forget() # Inicialmente escondido
@@ -184,6 +186,21 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
         self.active_date_fields_container.grid_columnconfigure(0, weight=0) # Label
         self.active_date_fields_container.grid_columnconfigure(1, weight=0) # Entry
 
+        # --- Frame para Meio de Pagamento (NOVO) ---
+        self.payment_method_frame = customtkinter.CTkFrame(main_frame, fg_color="transparent")
+        # O grid do payment_method_frame (row=8) será gerenciado por update_date_fields_visibility
+
+        payment_method_label = customtkinter.CTkLabel(self.payment_method_frame, text="Meio de Pagamento:", font=FONTE_LABEL_FORM)
+        payment_method_label.pack(anchor="w", pady=(0,2))
+
+        payment_method_radios_container = customtkinter.CTkFrame(self.payment_method_frame, fg_color="transparent")
+        payment_method_radios_container.pack(anchor="w")
+
+        self.radio_cartao = customtkinter.CTkRadioButton(payment_method_radios_container, text="Cartão de Crédito", variable=self.payment_method_var, value="Cartão de Crédito", font=FONTE_LABEL_FORM)
+        self.radio_cartao.pack(side="left", padx=(0,10))
+        self.radio_conta = customtkinter.CTkRadioButton(payment_method_radios_container, text="Conta Corrente", variable=self.payment_method_var, value="Conta Corrente", font=FONTE_LABEL_FORM)
+        self.radio_conta.pack(side="left")
+
         # AGORA CHAME load_categories_for_combobox APÓS os rádios de modalidade E fixed_checkbox_frame serem criados
         self.load_categories_for_combobox()
 
@@ -192,7 +209,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
 
         # Frame para os botões Salvar e Fechar
         action_buttons_frame = customtkinter.CTkFrame(main_frame, fg_color="transparent")
-        action_buttons_frame.grid(row=9, column=0, pady=(15,10), sticky="ew") # Movido para Row 9
+        action_buttons_frame.grid(row=10, column=0, pady=(15,10), sticky="ew") # Movido para Row 10 (após fixo)
         action_buttons_frame.grid_columnconfigure(0, weight=1) # Espaço antes do botão Salvar
         action_buttons_frame.grid_columnconfigure(1, weight=0) # Botão Salvar
         action_buttons_frame.grid_columnconfigure(2, weight=0) # Botão Fechar
@@ -226,7 +243,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
         """Mostra/esconde o campo 'Fixo' com base na seleção de categoria."""
         is_valid_category_selected = selected_category_obj is not None
         if is_valid_category_selected:
-            self.fixed_checkbox_frame.grid(row=8, column=0, sticky="ew", padx=10, pady=(5,5)) # Mostra na row 8
+            self.fixed_checkbox_frame.grid(row=9, column=0, sticky="ew", padx=10, pady=(5,5)) # Mostra na row 9
         else:
             self.fixed_checkbox_frame.grid_forget() # Esconde
             self.fixed_checkbox_var.set(False) # Reseta o estado da checkbox
@@ -300,6 +317,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
         payment_date_input = self.payment_date_entry.get().strip()
         status = self.status_var.get()
         modality = self.modality_var.get()
+        payment_method = self.payment_method_var.get() if status == "Pago" else None
         fixed_selection = self.fixed_checkbox_var.get() # Obtém o estado da checkbox
         print(f"DEBUG form_transacao: Modality to be saved: '{modality}'")
         installments = None
@@ -315,6 +333,10 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
             return
         if not value_str:
             print("Valor é obrigatório.") # TODO: Mostrar alerta na GUI
+            return
+        
+        if status == "Pago" and not payment_method:
+            CTkMessagebox(title="Erro de Validação", message="Por favor, selecione o meio de pagamento.", icon="warning", master=self)
             return
 
         try:
@@ -435,7 +457,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
                     category_id=selected_category_obj['id'], original_description=current_description,
                     total_value=value, initial_due_date=current_due_date_db,
                     initial_payment_date=current_payment_date_db, 
-                    initial_status=current_status,
+                    initial_status=current_status, initial_payment_method=payment_method if i == 0 and current_status == 'Pago' else None, # Passa o payment_method para a primeira transação fixa se paga
                     modality="À vista", num_installments=1, # Força para transação fixa
                     transaction_group_id=fixed_transaction_group_id # Passa o ID do grupo
                 )
@@ -447,7 +469,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
                 transaction_id_base=transaction_id, user_id=self.current_user_id,
                 category_id=selected_category_obj['id'], original_description=description,
                 total_value=value, initial_due_date=due_date_db,
-                initial_payment_date=payment_date_db, initial_status=status,
+                initial_payment_date=payment_date_db, initial_status=status, initial_payment_method=payment_method, # Passa o payment_method
                 modality=modality, num_installments=installments,
                 transaction_group_id=group_id_for_normal
             )
@@ -466,6 +488,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
             self.status_var.set("Em Aberto") # Reseta status
             self.modality_var.set("À vista") # Reseta modalidade (isso chamará update_installment_fields_visibility)
             self.fixed_checkbox_var.set(False) # Reseta fixo para o BooleanVar
+            self.payment_method_var.set(None) # Reseta meio de pagamento
             self.installments_combobox.set("2") # Reseta parcelas
             self.update_date_fields_visibility() # Atualiza a visibilidade dos campos de data
             self.update_installment_fields_visibility() # Atualiza visibilidade do campo de parcelas
@@ -479,21 +502,21 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
 
     def open_form_cadastro_categoria(self, event=None):
         """Abre o formulário de cadastro de categorias."""
-        if self.form_cadastro_ref is None or not self.form_cadastro_ref.winfo_exists():
+        if self.form_cadastro_category_ref is None or not self.form_cadastro_category_ref.winfo_exists():
             # Função a ser chamada quando o formulário de cadastro de categoria for fechado
             def on_category_form_closed_callback():
                 print("Formulário de cadastro de categoria fechado. Recarregando categorias...")
                 self.load_categories_for_combobox()
-                self.form_cadastro_ref = None # Limpa a referência
+                self.form_cadastro_category_ref = None # Limpa a referência
                 self.attributes("-topmost", True) # Garante que a janela de transação volte ao topo
                 self.focus_force() # Força o foco de volta
 
-            self.form_cadastro_ref = FormCadastroCategoriaWindow(master=self, current_user_id=self.current_user_id, on_close_callback=on_category_form_closed_callback)
-            self.form_cadastro_ref.on_close_callback = on_category_form_closed_callback
-            self.form_cadastro_ref.protocol("WM_DELETE_WINDOW", on_category_form_closed_callback)
-            self.form_cadastro_ref.focus()
+            self.form_cadastro_category_ref = FormCadastroCategoriaWindow(master=self, current_user_id=self.current_user_id, on_close_callback=on_category_form_closed_callback)
+            # self.form_cadastro_category_ref.on_close_callback = on_category_form_closed_callback # O construtor já faz isso
+            self.form_cadastro_category_ref.protocol("WM_DELETE_WINDOW", on_category_form_closed_callback) # Garante que o X também chame o callback
+            self.form_cadastro_category_ref.focus()
         else:
-            self.form_cadastro_ref.focus() # Se já existir, apenas foca nela
+            self.form_cadastro_category_ref.focus() # Se já existir, apenas foca nela
 
     def update_installment_fields_visibility(self):
         """Controla a visibilidade do campo de parcelas com base na modalidade."""
@@ -514,6 +537,7 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
         self.due_date_entry.grid_forget()
         self.payment_date_label_ref.grid_forget()
         self.payment_date_entry.grid_forget()
+        self.payment_method_frame.grid_forget() # Esconde o frame de meio de pagamento
 
         # Força o processamento das remoções do grid antes de adicionar novos widgets.
         self.active_date_fields_container.update_idletasks()
@@ -529,6 +553,10 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
             # Garante que o campo de data prevista esteja limpo e desabilitado
             self.due_date_entry.delete(0, customtkinter.END)
             self.due_date_entry.configure(state="disabled")
+            # Mostra o frame de meio de pagamento
+            self.payment_method_frame.grid(row=8, column=0, sticky="ew", padx=10, pady=(5,5))
+            if not self.payment_method_var.get(): # Se nenhum método estiver selecionado, seleciona um padrão
+                self.payment_method_var.set("Conta Corrente") # Ou "Cartão de Crédito"
         else: # Em Aberto
             # Configura e mostra Data Prevista
             self.due_date_label_ref.grid(row=0, column=0, sticky="w", pady=(0,2), padx=(0,5))
@@ -537,6 +565,9 @@ class FormTransacaoWindow(customtkinter.CTkToplevel):
             # Garante que o campo de data de pagamento esteja limpo e desabilitado
             self.payment_date_entry.delete(0, customtkinter.END)
             self.payment_date_entry.configure(state="disabled")
+            # Esconde o frame de meio de pagamento e reseta a variável
+            self.payment_method_frame.grid_forget()
+            self.payment_method_var.set(None)
 
     def format_date_entry(self, event, entry_widget):
         """Formata a entrada de data para DD/MM/AAAA enquanto o usuário digita."""

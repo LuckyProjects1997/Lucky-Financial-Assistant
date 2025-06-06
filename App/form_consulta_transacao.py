@@ -1,12 +1,21 @@
 # form_consulta_transacao.py
 import customtkinter
-import sys # Para resource_path
-import os  # Para resource_path
+import sys # Para resource_path E MANIPULAÇÃO DE SYS.PATH
+import os  # Para resource_path E MANIPULAÇÃO DE SYS.PATH
+
+# --- INÍCIO DA CORREÇÃO PARA PYLANCE E EXECUÇÃO DIRETA ---
+# Adiciona o diretório do script atual (que deve ser 'App') ao sys.path.
+# Isso ajuda o Pylance a encontrar módulos no mesmo diretório e também
+# permite que o script seja executado diretamente para testes, resolvendo importações locais.
+script_directory = os.path.dirname(os.path.abspath(__file__))
+if script_directory not in sys.path:
+    sys.path.append(script_directory)
+# --- FIM DA CORREÇÃO ---
+
 import datetime
 import Database
 from PIL import Image # Adicionado para carregar o ícone
 from CTkMessagebox import CTkMessagebox 
-
 # Definições de fonte padrão
 FONTE_FAMILIA = "Segoe UI"
 FONTE_TITULO_FORM = (FONTE_FAMILIA, 18, "bold")
@@ -35,7 +44,7 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
     def __init__(self, master=None, transaction_id=None, on_action_completed_callback=None):
         super().__init__(master)
         self.title("Consulta de Transação")
-        self.geometry("450x600")
+        self.geometry("450x680") # Aumentada a altura da janela
         self.configure(fg_color="#1c1c1c")
         # self.grab_set() # Pode causar problemas com CTkMessagebox se não gerenciado cuidadosamente
 
@@ -47,6 +56,7 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
 
         self.field_elements = {} # Armazenará dicts com 'display', 'input', 'icon' para campos editáveis
         self.status_var = customtkinter.StringVar()
+        self.payment_method_consult_var = customtkinter.StringVar() # Para os radio buttons do meio de pagamento na consulta
         self.pencil_icon_image = None # Atributo para armazenar a imagem do ícone
 
         self._load_icons() # Carrega os ícones
@@ -129,12 +139,13 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
         # (Label Text, db_key, widget_type, is_alterable)
         # widget_type: 'label_only', 'entry', 'combobox_category', 'radios_status'
         # is_alterable_config: True/False ou uma condição baseada nos dados da transação
-
+        # Novo widget_type: 'radios_payment_method'
         
         field_configs = [
             ("ID:", "id", "label_only", False),
             ("Descrição:", "description", "entry", True),
             ("Data Lançamento:", "launch_date", "label_only", False),
+            ("Tipo:", "category_type", "label_only", False),
             ("Categoria:", "category_name", "combobox_category", True), # db_key é category_name para display, mas usaremos category_id para salvar
             ("Modalidade:", "modality", "label_only", False),
             ("Parcela:", "installments", "label_only", False), # Mantido como label_only
@@ -146,6 +157,7 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             ("Status:", "status", "radios_status", True),
             ("Data Prevista:", "due_date", "entry", True),
             ("Data Pagamento:", "payment_date", "entry", True),
+            ("Meio Pagamento:", "payment_method", "radios_payment_method", lambda data: data.get('status') == 'Pago' and data.get('category_type') == 'Despesa'),
         ]
         
         transaction_category_type = self.transaction_data.get('category_type')
@@ -159,6 +171,7 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             input_widget = None
             icon_widget = None
             radios_for_status = None
+            radios_for_payment_method = None
 
              
             # Determina se o campo é alterável para ESTA transação específica
@@ -177,6 +190,16 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
                     radio_pago = customtkinter.CTkRadioButton(input_widget, text="Pago", variable=self.status_var, value="Pago", font=FONTE_LABEL_FORM, state="disabled")
                     radio_pago.pack(side="left")
                     radios_for_status = [radio_aberto, radio_pago]
+                elif widget_type == "radios_payment_method":
+                    input_widget = customtkinter.CTkFrame(main_frame, fg_color="transparent") # Frame para os radios de meio de pagamento
+                    radio_cartao_consult = customtkinter.CTkRadioButton(input_widget, text="Cartão de Crédito", variable=self.payment_method_consult_var, value="Cartão de Crédito", font=FONTE_LABEL_FORM, state="disabled")
+                    radio_cartao_consult.pack(side="left", padx=(0,10))
+                    radio_conta_consult = customtkinter.CTkRadioButton(input_widget, text="Conta Corrente", variable=self.payment_method_consult_var, value="Conta Corrente", font=FONTE_LABEL_FORM, state="disabled")
+                    radio_conta_consult.pack(side="left")
+                    radios_for_payment_method = [radio_cartao_consult, radio_conta_consult]
+                    # A linha abaixo é importante para garantir que o frame dos rádios
+                    # não esteja visível ou interferindo no layout antes da edição ser ativada.
+                    input_widget.grid_remove() # Adicionado: Garante que o frame dos rádios esteja escondido inicialmente
                 elif widget_type == "entry":
                     input_widget = customtkinter.CTkEntry(main_frame, font=FONTE_VALOR_FORM, state="disabled", height=BOTAO_HEIGHT)
                 
@@ -193,6 +216,8 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             }
             if radios_for_status:
                 self.field_elements[db_key]["radios"] = radios_for_status
+            if radios_for_payment_method: # Adicionado para payment_method
+                self.field_elements[db_key]["radios_pm"] = radios_for_payment_method
 
             # Posiciona o display_widget (Label de visualização)
             display_widget.grid(row=current_row, column=1, sticky="e", padx=5, pady=(5,2)) # Alinhado à direita
@@ -288,6 +313,10 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             elif db_key == "status":
                 display_text = raw_value if raw_value else "N/A"
                 if widget_type == "radios_status": self.status_var.set(display_text)
+            elif db_key == "payment_method":
+                display_text = raw_value if raw_value else "N/A"
+                if widget_type == "radios_payment_method":
+                    self.payment_method_consult_var.set(display_text if display_text != "N/A" else None) # Define como None se for N/A para não selecionar radio
             else: # Campos de texto simples ou IDs
                 display_text = str(raw_value) if raw_value is not None else "N/A"
                 input_text_or_val = display_text
@@ -355,6 +384,14 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             if "status" in self.field_elements:
                 # Status é sempre lido da self.status_var, que é atualizada pelos radio buttons
                 updated_data["status"] = self.status_var.get()
+
+            # --- Coleta do Meio de Pagamento ---
+            if "payment_method" in self.field_elements and self.field_elements["payment_method"].get("is_alterable_for_this_transaction", False):
+                pm_elements = self.field_elements["payment_method"]
+                if pm_elements["input"].cget("state") == "normal": # Se os radios estavam ativos
+                    updated_data["payment_method"] = self.payment_method_consult_var.get()
+                elif updated_data.get("status") != "Pago": # Se não estava ativo e status não é pago, limpa
+                    updated_data["payment_method"] = None
             
             if "category_name" in self.field_elements: # O input widget é para category_name
                 cat_elements = self.field_elements["category_name"]
@@ -390,6 +427,9 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             if updated_data.get("status") == "Pago" and not updated_data.get("due_date"):
                 updated_data["due_date"] = updated_data.get("payment_date")
 
+            if updated_data.get("status") == "Pago" and updated_data.get("category_type") == "Despesa" and not updated_data.get("payment_method"):
+                CTkMessagebox(title="Erro de Validação", message="Meio de pagamento é obrigatório para despesas pagas.", icon="warning", master=self)
+                return
             success = Database.update_transaction(
                 transaction_id=updated_data["transaction_id"],
                 description=updated_data["description"],
@@ -397,7 +437,8 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
                 due_date=updated_data["due_date"],
                 payment_date=updated_data["payment_date"],
                 status=updated_data["status"],
-                category_id=updated_data["category_id"]
+                category_id=updated_data["category_id"],
+                payment_method=updated_data.get("payment_method") # Passa o meio de pagamento
             )
 
             if success:
@@ -510,6 +551,9 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
         if widget_type == "radios_status":
             for radio in elements["radios"]:
                 radio.configure(state="normal")
+        elif widget_type == "radios_payment_method": # Adicionado para payment_method
+            for radio_pm in elements.get("radios_pm", []): # Corrigido para usar a chave correta
+                radio_pm.configure(state="normal")
         else: # entry, combobox
             input_widget.configure(state="normal")
             input_widget.focus() # Define o foco para o campo de entrada
@@ -546,6 +590,9 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             if widget_type == "radios_status":
                 for radio in elements["radios"]:
                     radio.configure(state="disabled")
+            elif widget_type == "radios_payment_method": # Adicionado para payment_method
+                for radio_pm in elements.get("radios_pm", []): # Corrigido para usar a chave correta
+                    radio_pm.configure(state="disabled")
             else: # entry, combobox
                 input_widget.configure(state="disabled")
         

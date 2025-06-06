@@ -1,4 +1,4 @@
-# Main.py
+    # Main.py
 
 # Importa os módulos necessários do PySide6 para a interface gráfica.
 import sys  # Usado para sair da aplicação e manipular sys.path

@@ -293,7 +293,7 @@ class Dashboard(customtkinter.CTk):
         self.monthly_proventos_summary_frame.grid_columnconfigure(1, weight=1)
         self.monthly_proventos_summary_frame.grid_rowconfigure(0, weight=0)
         self.monthly_proventos_summary_frame.grid_rowconfigure(1, weight=0)
-        self.monthly_proventos_summary_frame.grid_rowconfigure(2, weight=1)
+        self.monthly_proventos_summary_frame.grid_rowconfigure(4, weight=1) # Aumentado para acomodar novos campos
 
         # --- Annual Summary Section ---
         self.annual_summary_title_label = customtkinter.CTkLabel(parent_frame, text="Resumo Anual", font=FONTE_TITULO_GRANDE)
@@ -310,7 +310,7 @@ class Dashboard(customtkinter.CTk):
         self.annual_totals_display_frame = customtkinter.CTkFrame(parent_frame, corner_radius=10, border_width=2, fg_color=COR_CONTAINER_INTERNO, width=260, height=120)
         self.annual_totals_display_frame.grid(row=4, column=2, padx=(10,20), pady=(10, 20), sticky="nsew")
         self.annual_totals_display_frame.grid_propagate(False)
-        self.annual_totals_display_frame.grid_rowconfigure(0, weight=0)
+        self.annual_totals_display_frame.grid_rowconfigure(2, weight=0) # Aumentado para acomodar novos campos
         self.annual_totals_display_frame.grid_columnconfigure(0, weight=0)
 
         # Carregar dados para os elementos recém-criados
@@ -449,6 +449,11 @@ class Dashboard(customtkinter.CTk):
         total_despesas_mes = sum(item['total_value'] for item in monthly_data_raw if item['category_type'] == 'Despesa')
         saldo_mes = total_proventos_mes - total_despesas_mes
         cor_saldo = "lightgreen" if saldo_mes >= 0 else "tomato"
+        
+        # Buscar totais por meio de pagamento
+        payment_method_summary = Database.get_monthly_expenses_by_payment_method(self.current_user_id, selected_year, month_number)
+        total_cartao_mes = payment_method_summary.get("Cartão de Crédito", 0.0)
+        total_conta_mes = payment_method_summary.get("Conta Corrente", 0.0)
 
         # Total Proventos
         proventos_title_text = f"Total Proventos:"
@@ -465,12 +470,26 @@ class Dashboard(customtkinter.CTk):
         despesas_label_value = customtkinter.CTkLabel(self.monthly_proventos_summary_frame, text=f"R$ {total_despesas_mes:.2f}", font=FONTE_NORMAL_BOLD, text_color="tomato", anchor="w")
         despesas_label_value.grid(row=1, column=1, sticky="w", padx=(0,10), pady=5)
 
+        # Total Cartão de Crédito
+        cartao_title_text = f"Cartão Crédito:"
+        cartao_label_text = customtkinter.CTkLabel(self.monthly_proventos_summary_frame, text=cartao_title_text, font=FONTE_NORMAL_BOLD, anchor="w")
+        cartao_label_text.grid(row=2, column=0, sticky="w", padx=(10,10), pady=5)
+        cartao_label_value = customtkinter.CTkLabel(self.monthly_proventos_summary_frame, text=f"R$ {total_cartao_mes:.2f}", font=FONTE_NORMAL_BOLD, text_color="orange", anchor="w")
+        cartao_label_value.grid(row=2, column=1, sticky="w", padx=(0,10), pady=5)
+
+        # Total Pago em Conta
+        conta_title_text = f"Pago em Conta:"
+        conta_label_text = customtkinter.CTkLabel(self.monthly_proventos_summary_frame, text=conta_title_text, font=FONTE_NORMAL_BOLD, anchor="w")
+        conta_label_text.grid(row=3, column=0, sticky="w", padx=(10,10), pady=5)
+        conta_label_value = customtkinter.CTkLabel(self.monthly_proventos_summary_frame, text=f"R$ {total_conta_mes:.2f}", font=FONTE_NORMAL_BOLD, text_color="cyan", anchor="w")
+        conta_label_value.grid(row=3, column=1, sticky="w", padx=(0,10), pady=5)
+
         # Saldo do Mês
         saldo_title_text = f"Saldo:"
         saldo_label_text = customtkinter.CTkLabel(self.monthly_proventos_summary_frame, text=saldo_title_text, font=FONTE_NORMAL_BOLD, anchor="w")
-        saldo_label_text.grid(row=2, column=0, sticky="w", padx=(10,10), pady=5)
+        saldo_label_text.grid(row=4, column=0, sticky="w", padx=(10,10), pady=5)
         saldo_label_value = customtkinter.CTkLabel(self.monthly_proventos_summary_frame, text=f"R$ {saldo_mes:.2f}", font=FONTE_NORMAL_BOLD, text_color=cor_saldo, anchor="w")
-        saldo_label_value.grid(row=2, column=1, sticky="w", padx=(0,10), pady=5)
+        saldo_label_value.grid(row=4, column=1, sticky="w", padx=(0,10), pady=5)
 
 
     def load_annual_category_summaries(self):
@@ -573,6 +592,11 @@ class Dashboard(customtkinter.CTk):
         # Popular tabela de Proventos e obter total
         total_proventos = create_summary_section(provento_scroll_frame, "Provento")
 
+        # Buscar totais anuais por meio de pagamento
+        # (Assumindo que você implementará get_annual_expenses_by_payment_method em Database.py)
+        # annual_payment_method_summary = Database.get_annual_expenses_by_payment_method(self.current_user_id, selected_year)
+        # total_cartao_anual = annual_payment_method_summary.get("Cartão de Crédito", 0.0)
+        # total_conta_anual = annual_payment_method_summary.get("Conta Corrente", 0.0)
         # Frame para exibir os totais - AGORA FILHO DE self.annual_totals_display_frame
         totals_summary_frame = customtkinter.CTkFrame(self.annual_totals_display_frame, fg_color="transparent")
         totals_summary_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(5, 5)) # pady ajustado para novo pai
@@ -592,14 +616,30 @@ class Dashboard(customtkinter.CTk):
         total_despesas_label_value = customtkinter.CTkLabel(totals_summary_frame, text=f"R$ {total_despesas:.2f}", font=FONTE_NORMAL_BOLD, text_color="tomato", anchor="w")
         total_despesas_label_value.grid(row=1, column=1, sticky="w", pady=(0,2))
 
+        # Total Cartão Anual (Placeholder - requer get_annual_expenses_by_payment_method)
+        # total_cartao_anual_label_text = customtkinter.CTkLabel(totals_summary_frame, text="Total Cartão Anual:", font=FONTE_NORMAL_BOLD, anchor="w")
+        # total_cartao_anual_label_text.grid(row=2, column=0, sticky="w", padx=(0,10), pady=(0,2))
+        # total_cartao_anual_label_value = customtkinter.CTkLabel(totals_summary_frame, text=f"R$ {total_cartao_anual:.2f}", font=FONTE_NORMAL_BOLD, text_color="orange", anchor="w")
+        # total_cartao_anual_label_value.grid(row=2, column=1, sticky="w", pady=(0,2))
+
+        # Total Pago em Conta Anual (Placeholder - requer get_annual_expenses_by_payment_method)
+        # total_conta_anual_label_text = customtkinter.CTkLabel(totals_summary_frame, text="Total Pago em Conta Anual:", font=FONTE_NORMAL_BOLD, anchor="w")
+        # total_conta_anual_label_text.grid(row=3, column=0, sticky="w", padx=(0,10), pady=(0,2))
+        # total_conta_anual_label_value = customtkinter.CTkLabel(totals_summary_frame, text=f"R$ {total_conta_anual:.2f}", font=FONTE_NORMAL_BOLD, text_color="cyan", anchor="w")
+        # total_conta_anual_label_value.grid(row=3, column=1, sticky="w", pady=(0,2))
+
+
         # Saldo Total Anual
         saldo_anual = total_proventos - total_despesas
         cor_saldo = "lightgreen" if saldo_anual >= 0 else "tomato"
 
+        # Ajustar a linha do Saldo Total Anual se os campos de cartão/conta forem adicionados
+        # saldo_row_index = 4 # Se os campos de cartão/conta forem descomentados
+        saldo_row_index = 2 # Se os campos de cartão/conta permanecerem comentados
         saldo_total_label_text = customtkinter.CTkLabel(totals_summary_frame, text="Saldo Total Anual:", font=FONTE_NORMAL_BOLD, anchor="w")
-        saldo_total_label_text.grid(row=2, column=0, sticky="w", padx=(0,10), pady=(2,0)) # pady superior para separar
+        saldo_total_label_text.grid(row=saldo_row_index, column=0, sticky="w", padx=(0,10), pady=(2,0)) # pady superior para separar
         saldo_total_label_value = customtkinter.CTkLabel(totals_summary_frame, text=f"R$ {saldo_anual:.2f}", font=FONTE_NORMAL_BOLD, text_color=cor_saldo, anchor="w")
-        saldo_total_label_value.grid(row=2, column=1, sticky="w", pady=(2,0))
+        saldo_total_label_value.grid(row=saldo_row_index, column=1, sticky="w", pady=(2,0))
 
     def load_monthly_details_for_list_container(self):
         # Limpa o conteúdo anterior do list_container_frame

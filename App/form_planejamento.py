@@ -5,6 +5,7 @@ import Database # Importa o módulo Database para buscar transações
 import datetime # Para formatação de datas
 import re # Para manipulação de strings (descrição da transação)
 from form_consulta_transacao import FormConsultaTransacaoWindow # Para abrir detalhes da transação
+from collections import defaultdict # Para somar categorias
 from form_simulador import FormSimuladorWindow # Importar o formulário de simulador
 
 # Definições de fonte padrão (pode ajustar conforme necessário)
@@ -196,11 +197,11 @@ class PlanejamentoView(customtkinter.CTkFrame): # Herda de CTkFrame
 
         # Cabeçalhos
         if transaction_type == "Despesa":
-            col_weights = [1, 2, 2, 1, 1, 1, 1, 1, 2] # 9 colunas para Despesa
-            headers = ["Data", "Descrição", "Categoria", "V. Parcela", "V. Total", "Status", "Modalidade", "Parcela", "Provento Associado"]
+            col_weights = [1, 2, 1, 1, 1, 1, 1, 1, 1, 2] # 10 colunas para Despesa
+            headers = ["Data", "Descrição", "Categoria", "V. Parcela", "V. Total", "Status", "Modalidade", "Parcela", "Pagamento", "Provento Associado"]
         else: # Provento
             col_weights = [1, 3, 2, 1, 1, 1, 1, 1] # 8 colunas para Provento
-            headers = ["Data", "Descrição", "Categoria", "V. Parcela", "V. Total", "Status", "Modalidade", "Parcela"]
+            headers = ["Data", "Descrição", "Categoria", "Valor", "V. Total", "Status", "Modalidade", "Parcela"] # "V. Parcela" para provento é o valor dele mesmo
 
         for i, header_text in enumerate(headers):
             parent_frame.grid_columnconfigure(i, weight=col_weights[i])
@@ -254,6 +255,11 @@ class PlanejamentoView(customtkinter.CTkFrame): # Herda de CTkFrame
             widgets.append(customtkinter.CTkLabel(parent_frame, text=trans.get('modality', 'N/A'), font=FONTE_LABEL_PEQUENA, anchor="center"))
             # Parcela
             widgets.append(customtkinter.CTkLabel(parent_frame, text=trans.get('installments', '-'), font=FONTE_LABEL_PEQUENA, anchor="center"))
+
+            if transaction_type == "Despesa":
+                # Meio de Pagamento (NOVA COLUNA para Despesa)
+                payment_method_display_planning = trans.get('payment_method', '-') if trans.get('status') == 'Pago' else '-'
+                widgets.append(customtkinter.CTkLabel(parent_frame, text=payment_method_display_planning, font=FONTE_LABEL_PEQUENA, anchor="w"))
 
             transaction_id_for_click = trans['id']
 
@@ -319,7 +325,8 @@ class PlanejamentoView(customtkinter.CTkFrame): # Herda de CTkFrame
             due_date=despesa_data['due_date'],
             payment_date=despesa_data.get('payment_date'),
             status=despesa_data['status'],
-            category_id=despesa_data['category_id'],
+            category_id=despesa_data['category_id'], # Mantém a categoria original
+            payment_method=despesa_data.get('payment_method'), # Mantém o meio de pagamento original
             source_provento_id=selected_provento_id_to_save # Este é o campo que estamos atualizando
         )
 
@@ -373,18 +380,7 @@ class PlanejamentoView(customtkinter.CTkFrame): # Herda de CTkFrame
         # --- Frame para o painel esquerdo (Saldos e Despesas Pendentes) ---
         left_panel_frame = customtkinter.CTkFrame(results_inner_frame, fg_color="gray17", corner_radius=8)
         left_panel_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
-        left_panel_frame.grid_columnconfigure(0, weight=1) # Coluna única para conteúdo interno
-
-        # --- Frame para o painel direito (Alocação Detalhada por Provento) ---
-        right_panel_frame = customtkinter.CTkFrame(results_inner_frame, fg_color="gray17", corner_radius=8)
-        right_panel_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
-        right_panel_frame.grid_columnconfigure(0, weight=1) # Coluna única para conteúdo interno
-        # Usaremos pack inside this frame
-
-        # Create a scrollable frame inside the right panel for the provento details
-        provento_details_scroll_frame = customtkinter.CTkScrollableFrame(right_panel_frame, fg_color="transparent")
-        provento_details_scroll_frame.pack(fill="both", expand=True, padx=5, pady=5) # Use padx/pady here for spacing inside the panel
-        provento_details_scroll_frame.grid_columnconfigure(0, weight=1) # Single column for content inside the scrollable frame
+        left_panel_frame.grid_columnconfigure(0, weight=1)
 
         # --- Exibir Saldos dos Proventos ---
         print(f"DEBUG PlanejamentoView: Conteúdo de self.despesa_provento_comboboxes: {self.despesa_provento_comboboxes}")
@@ -428,37 +424,6 @@ class PlanejamentoView(customtkinter.CTkFrame): # Herda de CTkFrame
                 customtkinter.CTkLabel(provento_info_frame, text=f"Usado: R$ {valor_alocado_provento:.2f}", font=FONTE_LABEL_PEQUENA, text_color="orange", anchor="w").pack(side="left", padx=5)
                 customtkinter.CTkLabel(provento_info_frame, text=f"Saldo: R$ {saldo_restante_provento:.2f}", font=FONTE_LABEL_PEQUENA, text_color=cor_saldo, anchor="w").pack(side="left", padx=5)
 
-        
-                # --- Display Detailed Allocation for this Provento (in the right panel's scrollable frame) ---
-                if allocated_despesas_for_provento: # Only create a section if there are allocated expenses
-                    has_allocations_to_display = True
-                    provento_detail_frame = customtkinter.CTkFrame(provento_details_scroll_frame, fg_color="gray20", corner_radius=8, border_width=1, border_color="gray45")
-                    provento_detail_frame.pack(fill="x", padx=5, pady=(5, 5), anchor="n") # Pack vertically in the scrollable frame
-                    provento_detail_frame.grid_columnconfigure(0, weight=1) # Single column for content inside this detail frame
-
-                    # Provento Title and Value
-                    provento_detail_title = customtkinter.CTkLabel(provento_detail_frame, text=f"{provento['description']} (R$ {valor_original_provento:.2f})", font=FONTE_LABEL_BOLD, text_color="lightgreen")
-                    provento_detail_title.pack(anchor="w", padx=10, pady=(5, 5))
-
-                   # List allocated expenses
-                    for desp in sorted(allocated_despesas_for_provento, key=lambda x: x['due_date']):
-                         due_date_fmt = datetime.datetime.strptime(desp['due_date'], "%Y-%m-%d").strftime("%d/%m/%Y")
-                         customtkinter.CTkLabel(provento_detail_frame, text=f"- {desp['description']} (Venc: {due_date_fmt}, Valor: R$ {desp['value']:.2f})", font=FONTE_LABEL_PEQUENA, text_color="tomato", anchor="w").pack(fill="x", padx=15, pady=1)
-
-                    # Separator
-                    separator = customtkinter.CTkFrame(provento_detail_frame, height=1, fg_color="gray50")
-                    separator.pack(fill="x", padx=10, pady=(5, 5))
-
-                    # Summary for this provento
-                    customtkinter.CTkLabel(provento_detail_frame, text=f"Total Alocado: R$ {valor_alocado_provento:.2f}", font=FONTE_LABEL_NORMAL, text_color="orange", anchor="w").pack(anchor="w", padx=10, pady=(0, 2))
-                    customtkinter.CTkLabel(provento_detail_frame, text=f"Saldo Restante: R$ {saldo_restante_provento:.2f}", font=FONTE_LABEL_NORMAL, text_color=cor_saldo, anchor="w").pack(anchor="w", padx=10, pady=(0, 5))
-
-
-        # --- Exibir Despesas Pendentes ---
-        print(f"DEBUG PlanejamentoView: Verificando despesas pendentes de {len(despesas_do_mes)} despesas totais...")
-        print("DEBUG PlanejamentoView: Exibindo Despesas Pendentes de Alocação...")
-        pendentes_title = customtkinter.CTkLabel(left_panel_frame, text="Despesas Pendentes de Alocação:", font=FONTE_LABEL_BOLD)
-        pendentes_title.pack(anchor="w", padx=10, pady=(15,5))
 
         despesas_pendentes = []
         for despesa in despesas_do_mes:
@@ -467,6 +432,14 @@ class PlanejamentoView(customtkinter.CTkFrame): # Herda de CTkFrame
                  print(f"DEBUG PlanejamentoView: Despesa '{despesa['description']}' (ID: {despesa['id']}) está pendente (source_provento_id is None).")
                  despesas_pendentes.append(despesa)
 
+        # --- Exibir Despesas Pendentes e sua Soma ---
+        print(f"DEBUG PlanejamentoView: Verificando despesas pendentes de {len(despesas_do_mes)} despesas totais...")
+        print("DEBUG PlanejamentoView: Exibindo Despesas Pendentes de Alocação...")
+        total_despesas_pendentes = sum(d['value'] for d in despesas_pendentes)
+        pendentes_title_text = f"Despesas Pendentes de Alocação (R$ {total_despesas_pendentes:.2f}):"
+        pendentes_title = customtkinter.CTkLabel(left_panel_frame, text=pendentes_title_text, font=FONTE_LABEL_BOLD)
+        pendentes_title.pack(anchor="w", padx=10, pady=(15,5))
+
         if not despesas_pendentes:
             customtkinter.CTkLabel(left_panel_frame, text="Todas as despesas foram alocadas a um provento.", font=FONTE_LABEL_NORMAL, text_color="gray60").pack(anchor="w", padx=10, pady=2)
         else:
@@ -474,14 +447,83 @@ class PlanejamentoView(customtkinter.CTkFrame): # Herda de CTkFrame
                 due_date_fmt = datetime.datetime.strptime(desp_pendente['due_date'], "%Y-%m-%d").strftime("%d/%m/%Y") # Formato completo
                 customtkinter.CTkLabel(left_panel_frame, text=f"- {desp_pendente['description']} (Venc: {due_date_fmt}, Valor: R$ {desp_pendente['value']:.2f})", font=FONTE_LABEL_NORMAL, text_color="tomato", anchor="w").pack(fill="x", padx=10, pady=1)
 
+
+        # --- Frame para o painel direito (Alocação Detalhada) ---
+        right_panel_frame = customtkinter.CTkFrame(results_inner_frame, fg_color="gray17", corner_radius=8)
+        right_panel_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+
+        # --- Alocação Detalhada por Provento (no painel direito) ---
+        # Create a scrollable frame inside the right panel for the provento details
+        provento_details_scroll_frame = customtkinter.CTkScrollableFrame(right_panel_frame, label_text="Alocação Detalhada por Provento", label_font=FONTE_LABEL_BOLD, fg_color="transparent")
+        provento_details_scroll_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Loop pelos proventos para exibir detalhes no painel direito
+        has_allocations_in_right_panel = False
+        if proventos_do_mes:
+            for provento in sorted(proventos_do_mes, key=lambda x: x['description']):
+                provento_id = provento['id']
+                valor_original_provento = provento['value']
+                
+                allocated_despesas_for_provento = allocated_despesas_by_provento_id.get(provento_id, [])
+                
+                if allocated_despesas_for_provento:
+                    has_allocations_in_right_panel = True
+                    
+                    valor_alocado_provento = sum(d['value'] for d in allocated_despesas_for_provento)
+                    saldo_restante_provento = valor_original_provento - valor_alocado_provento
+                    cor_saldo = "lightgreen" if saldo_restante_provento >= 0 else "tomato"
+
+                    provento_detail_frame = customtkinter.CTkFrame(provento_details_scroll_frame, fg_color="gray20", corner_radius=8, border_width=1, border_color="gray45")
+                    provento_detail_frame.pack(fill="x", padx=5, pady=(5, 5), anchor="n")
+                    provento_detail_frame.grid_columnconfigure(0, weight=1)
+
+                    provento_detail_title = customtkinter.CTkLabel(provento_detail_frame, text=f"{provento['description']} (R$ {valor_original_provento:.2f})", font=FONTE_LABEL_BOLD, text_color="lightgreen")
+                    provento_detail_title.pack(anchor="w", padx=10, pady=(5, 5))
+
+                    for desp in sorted(allocated_despesas_for_provento, key=lambda x: x['due_date']):
+                        due_date_fmt = datetime.datetime.strptime(desp['due_date'], "%Y-%m-%d").strftime("%d/%m/%Y")
+                        customtkinter.CTkLabel(provento_detail_frame, text=f"- {desp['description']} (Venc: {due_date_fmt}, Valor: R$ {desp['value']:.2f})", font=FONTE_LABEL_PEQUENA, text_color="tomato", anchor="w").pack(fill="x", padx=15, pady=1)
+
+                    separator = customtkinter.CTkFrame(provento_detail_frame, height=1, fg_color="gray50")
+                    separator.pack(fill="x", padx=10, pady=(5, 5))
+
+                    customtkinter.CTkLabel(provento_detail_frame, text=f"Total Alocado: R$ {valor_alocado_provento:.2f}", font=FONTE_LABEL_NORMAL, text_color="orange", anchor="w").pack(anchor="w", padx=10, pady=(0, 2))
+                    customtkinter.CTkLabel(provento_detail_frame, text=f"Saldo Restante: R$ {saldo_restante_provento:.2f}", font=FONTE_LABEL_NORMAL, text_color=cor_saldo, anchor="w").pack(anchor="w", padx=10, pady=(0, 5))
+
+        # --- (Placeholder para Sugestão de Alocação Futura no painel direito, se não houver alocações) ---
+        if not has_allocations_in_right_panel:
+            customtkinter.CTkLabel(provento_details_scroll_frame, text="Nenhuma despesa alocada a um provento neste mês.", font=FONTE_LABEL_NORMAL, text_color="gray60").pack(pady=20, padx=20)
+
+        # --- Exibir Soma das Categorias de Despesa (MOVIDO PARA O PAINEL DIREITO, ABAIXO DA ALOCAÇÃO DETALHADA) ---
+        soma_cat_container_right = customtkinter.CTkFrame(right_panel_frame, fg_color="transparent") # Usar right_panel_frame como pai
+        soma_cat_container_right.pack(fill="x", padx=5, pady=(15, 5)) # pady superior para separar da alocação detalhada
+
+        soma_categorias_title_right = customtkinter.CTkLabel(soma_cat_container_right, text="Soma Categorias (Despesas):", font=FONTE_LABEL_BOLD)
+        soma_categorias_title_right.pack(anchor="w", padx=5, pady=(0,5)) # padx interno ao container
+
+        if not despesas_do_mes:
+            customtkinter.CTkLabel(soma_cat_container_right, text="Nenhuma despesa para somar categorias.", font=FONTE_LABEL_NORMAL, text_color="gray60").pack(anchor="w", padx=5, pady=2)
+        else:
+            category_sums_right = defaultdict(float)
+            for despesa in despesas_do_mes:
+                category_sums_right[despesa['category_name']] += despesa['value']
+
+            if not category_sums_right:
+                customtkinter.CTkLabel(soma_cat_container_right, text="Nenhuma categoria de despesa encontrada.", font=FONTE_LABEL_NORMAL, text_color="gray60").pack(anchor="w", padx=5, pady=2)
+            else:
+                soma_cat_items_frame_right = customtkinter.CTkFrame(soma_cat_container_right, fg_color="transparent")
+                soma_cat_items_frame_right.pack(fill="x", padx=0, pady=0)
+
+                for cat_name, total_val in sorted(category_sums_right.items()):
+                    cat_item_frame_right = customtkinter.CTkFrame(soma_cat_items_frame_right, fg_color="transparent")
+                    cat_item_frame_right.pack(fill="x", padx=5, pady=1)
+                    customtkinter.CTkLabel(cat_item_frame_right, text=f"{cat_name}:", font=FONTE_LABEL_NORMAL, anchor="w").pack(side="left", padx=(0,5))
+                    customtkinter.CTkLabel(cat_item_frame_right, text=f"R$ {total_val:.2f}", font=FONTE_LABEL_NORMAL, text_color="tomato", anchor="e").pack(side="left", padx=5)
+
+
         # --- (Placeholder para Sugestão de Alocação Futura) ---
         print("DEBUG PlanejamentoView: Verificando se placeholder de sugestão deve ser exibido...")
         # print("DEBUG PlanejamentoView: Exibindo Placeholder para Sugestão...") # Removed placeholder
-        if not has_allocations_to_display:
-             # Remove the title if no allocations are displayed below it
-             right_panel_title.pack_forget()
-             customtkinter.CTkLabel(provento_details_scroll_frame, text="Nenhuma despesa alocada a um provento neste mês.", font=FONTE_LABEL_NORMAL, text_color="gray60").pack(pady=20, padx=20)
-             
     def _open_simulador_window(self):
         """Abre a janela do formulário de simulação."""
         # Verifica se a janela já existe e está ativa
