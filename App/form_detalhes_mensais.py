@@ -61,7 +61,8 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
         main_frame.grid_rowconfigure(1, weight=0) # Botões dos meses
         main_frame.grid_rowconfigure(2, weight=0) # Título "Detalhes"
         main_frame.grid_rowconfigure(3, weight=0) # Seção "Detalhes" (altura fixa)
-        main_frame.grid_rowconfigure(4, weight=1) # summary_section_container (expande verticalmente)
+        main_frame.grid_rowconfigure(4, weight=0) # Título "Resumo por Categoria"
+        main_frame.grid_rowconfigure(5, weight=1) # summary_content_frame (expande verticalmente)
         main_frame.grid_rowconfigure(5, weight=0) # Botão Fechar
 
         title_label = customtkinter.CTkLabel(main_frame, text=f"Selecione o Mês ({selected_year})", font=FONTE_TITULO_FORM)
@@ -102,33 +103,38 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
         details_section_container.grid(row=3, column=0, sticky="ew", pady=(0, 10))
         details_section_container.grid_columnconfigure(0, weight=1) # Coluna para Despesas
         details_section_container.grid_columnconfigure(1, weight=1) # Coluna para Proventos
+        details_section_container.grid_columnconfigure(2, weight=0, minsize=230) # Coluna para Totais do Mês (fixed width)
         details_section_container.grid_rowconfigure(0, weight=0) # Linha única para os scrollables
 
         # Scrollable frame para "Despesas" (apenas título)
         self.despesas_details_scroll_frame = customtkinter.CTkScrollableFrame(details_section_container, label_text="Despesas", label_font=FONTE_LABEL_BOLD, fg_color="gray17", height=200) # Altura aumentada
-        self.despesas_details_scroll_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5), pady=5)
+        self.despesas_details_scroll_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5), pady=0)
 
         # Scrollable frame para "Proventos" (apenas título)
         self.proventos_details_scroll_frame = customtkinter.CTkScrollableFrame(details_section_container, label_text="Proventos", label_font=FONTE_LABEL_BOLD, fg_color="gray17", height=200) # Altura aumentada
-        self.proventos_details_scroll_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0), pady=5)
+        self.proventos_details_scroll_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 5), pady=0)
 
-        # --- Seção de Resumo (diretamente no main_frame) ---
-        summary_section_container = customtkinter.CTkFrame(main_frame, fg_color="transparent") # Container para título e caixa de resumo
-        summary_section_container.grid(row=4, column=0, sticky="nsew", pady=(10, 0)) # Movido para row=4
+        # Frame para "Totais do Mês" (terceira coluna)
+        self.monthly_totals_display_frame = customtkinter.CTkFrame(details_section_container, fg_color="gray17", corner_radius=10, width=230)
+        self.monthly_totals_display_frame.grid(row=0, column=2, sticky="ns", padx=(0,0), pady=0) # Sticky "ns" para preencher verticalmente
+        self.monthly_totals_display_frame.pack_propagate(False) # Impede que os filhos alterem o tamanho
+        # Placeholder inicial para o frame de totais
+        self.totals_placeholder_label = customtkinter.CTkLabel(self.monthly_totals_display_frame, text="Selecione um mês.", font=FONTE_LABEL_NORMAL, text_color="gray60")
+        self.totals_placeholder_label.pack(pady=20, padx=10, expand=True)
 
-        # Título para o Resumo (acima da caixa cinza)
-        self.summary_title_label = customtkinter.CTkLabel(summary_section_container, text="Resumo do Mês", font=FONTE_LABEL_BOLD)
-        self.summary_title_label.pack(anchor="w", pady=(0, 5)) # Empacotado no container, alinhado à esquerda
 
-        # Frame de conteúdo do Resumo (caixa cinza)
-        self.right_summary_frame = customtkinter.CTkFrame(summary_section_container, fg_color="gray17", corner_radius=10) # Width removido para ser dinâmico
+        # --- Seção de Resumo por Categoria (abaixo dos detalhes) ---
+        summary_category_title_label = customtkinter.CTkLabel(main_frame, text="Resumo por Categoria", font=FONTE_LABEL_BOLD)
+        summary_category_title_label.grid(row=4, column=0, pady=(15, 5), sticky="w")
+
+        # Frame de conteúdo do Resumo por Categoria
+        self.right_summary_frame = customtkinter.CTkFrame(main_frame, fg_color="gray17", corner_radius=10)
         # self.right_summary_frame.pack_propagate(False) # Removido ou ajustado se necessário
-        # Alinhado à esquerda (anchor="w"), preenche verticalmente (fill="y"), não expande horizontalmente (expand=False)
-        self.right_summary_frame.pack(anchor="w", fill="both", expand=True) # Fill both e expand True para ocupar espaço
+        self.right_summary_frame.grid(row=5, column=0, sticky="nsew", pady=(0,10)) # Ocupa a linha que expande
+
 
         # Configurar grid interno para o right_summary_frame (lista de categorias à esquerda, totais à direita)
-        self.right_summary_frame.grid_columnconfigure(0, weight=2) # Coluna para lista de categorias (mais peso)
-        self.right_summary_frame.grid_columnconfigure(1, weight=1) # Coluna para totais (menos peso)
+        self.right_summary_frame.grid_columnconfigure(0, weight=1) # Coluna única para lista de categorias
         self.right_summary_frame.grid_rowconfigure(0, weight=1)    # Linha única para expandir verticalmente
         # Placeholder inicial
         self.right_placeholder_label = customtkinter.CTkLabel(self.right_summary_frame, text="Selecione um mês.", font=FONTE_LABEL_NORMAL, text_color="gray60")
@@ -136,7 +142,7 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
 
         # --- Frame para Botões de Ação Inferiores ---
         bottom_actions_frame = customtkinter.CTkFrame(main_frame, fg_color="transparent")
-        bottom_actions_frame.grid(row=5, column=0, pady=(20,0), sticky="ew")
+        bottom_actions_frame.grid(row=6, column=0, pady=(20,0), sticky="ew") # Movido para row=6
         bottom_actions_frame.grid_columnconfigure(0, weight=1) # Espaço à esquerda
         bottom_actions_frame.grid_columnconfigure(1, weight=0) # Botão Cadastrar
         bottom_actions_frame.grid_columnconfigure(2, weight=0) # Botão Fechar
@@ -185,8 +191,10 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
         # Limpar placeholders e conteúdo anterior
         if hasattr(self, 'right_placeholder_label') and self.right_placeholder_label.winfo_exists():
             self.right_placeholder_label.grid_forget()
+        if hasattr(self, 'totals_placeholder_label') and self.totals_placeholder_label.winfo_exists():
+            self.totals_placeholder_label.pack_forget()
 
-        # Resetar o estado de ordenação ao mudar de mês
+         # Resetar o estado de ordenação ao mudar de mês
         self.despesas_sort_state = {'column': None, 'direction': 'asc'}
         self.proventos_sort_state = {'column': None, 'direction': 'asc'}
         # Limpar conteúdo anterior das tabelas de detalhes e do resumo
@@ -196,9 +204,11 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
             widget.destroy()
         for widget in self.right_summary_frame.winfo_children():
             widget.destroy()
+        for widget in self.monthly_totals_display_frame.winfo_children(): # Limpa o novo frame de totais
+            widget.destroy()
 
         self.all_transactions_for_month = get_transactions_for_month(user_id, year, month_number)
-        self.summary_title_label.configure(text=f"Resumo de {month_name}") # Atualiza o novo título do resumo
+        # self.summary_title_label.configure(text=f"Resumo de {month_name}") # Título agora é fixo "Resumo por Categoria"
         self._display_month_transactions() # Popula as tabelas de Despesas e Proventos
 
         # Calcular Saldo em Conta (Proventos Pagos - Despesas Pagas)
@@ -233,12 +243,12 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
         total_proventos = 0
 
         if not summary_data:
-            customtkinter.CTkLabel(self.right_summary_frame, text="Nenhum dado de resumo encontrado.", font=FONTE_LABEL_NORMAL, text_color="gray60").grid(row=0, column=0, pady=10, padx=10, sticky="nsew")
+            customtkinter.CTkLabel(self.right_summary_frame, text="Nenhum dado de resumo de categoria encontrado.", font=FONTE_LABEL_NORMAL, text_color="gray60").grid(row=0, column=0, pady=10, padx=10, sticky="nsew")
         else:
             # Frame para a lista de categorias (coluna 0 do right_summary_frame)
             # Usaremos um CTkScrollableFrame aqui para o caso de muitas categorias
             cat_summary_scroll_frame = customtkinter.CTkScrollableFrame(self.right_summary_frame, fg_color="transparent")
-            cat_summary_scroll_frame.grid(row=0, column=0, sticky="nsew", padx=(0,5), pady=0)
+            cat_summary_scroll_frame.grid(row=0, column=0, sticky="nsew", padx=0, pady=0) # Coluna única
 
             # Frame interno para o conteúdo da lista de categorias (para usar grid)
             cat_summary_frame = customtkinter.CTkFrame(cat_summary_scroll_frame, fg_color="transparent")
@@ -283,46 +293,43 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
             current_summary_row +=1
 
             # Linha de TOTAL
-            grand_total_value = total_despesas # Soma apenas das despesas listadas
-            customtkinter.CTkLabel(cat_summary_frame, text="TOTAL", font=FONTE_LABEL_BOLD).grid(row=current_summary_row, column=0, sticky="w")
-            customtkinter.CTkLabel(cat_summary_frame, text=f"R$ {grand_total_value:.2f}", font=FONTE_LABEL_BOLD).grid(row=current_summary_row, column=1, sticky="e")
+            grand_total_value = total_despesas # Soma apenas das despesas listadas (ou o que for apropriado para o TOTAL)
+            customtkinter.CTkLabel(cat_summary_frame, text="TOTAL", font=FONTE_LABEL_NORMAL).grid(row=current_summary_row, column=0, sticky="w")
+            customtkinter.CTkLabel(cat_summary_frame, text=f"R$ {grand_total_value:.2f}", font=FONTE_LABEL_NORMAL).grid(row=current_summary_row, column=1, sticky="e")
             current_summary_row +=1
 
-        # --- Frame para os Totais Mensais (Proventos, Despesas, Saldo) - Coluna 1 do right_summary_frame ---
-        monthly_totals_side_frame = customtkinter.CTkFrame(self.right_summary_frame, fg_color="gray20", width=220, border_width=1, border_color="gray45", corner_radius=8) # Ajustes visuais e largura
-        monthly_totals_side_frame.grid(row=0, column=1, sticky="ns", padx=(5,0), pady=10) # sticky "ns" para preencher verticalmente
-        monthly_totals_side_frame.pack_propagate(False) # Impede que os filhos alterem o tamanho
+        # --- Popular o self.monthly_totals_display_frame ---
+        # Limpa o placeholder se ainda existir
+        if hasattr(self, 'totals_placeholder_label') and self.totals_placeholder_label.winfo_exists():
+            self.totals_placeholder_label.pack_forget()
 
-        # Configurar grid interno para monthly_totals_side_frame
-        monthly_totals_side_frame.grid_columnconfigure(0, weight=1) # Coluna única para os labels
-
-        # Título para esta seção de totais
-        customtkinter.CTkLabel(monthly_totals_side_frame, text="Totais do Mês", font=FONTE_LABEL_BOLD).pack(anchor="w", pady=(10,10), padx=10) # Adicionado padx e pady superior
+         # Título para esta seção de totais
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text="Totais do Mês", font=FONTE_LABEL_BOLD).pack(anchor="w", pady=(10,10), padx=10)
 
         # Total Despesas (no frame lateral)
-        total_despesas_label = customtkinter.CTkLabel(monthly_totals_side_frame, text=f"Total Despesas: R$ {total_despesas:.2f}", font=FONTE_LABEL_BOLD, text_color="tomato")
-        total_despesas_label.pack(anchor="w", padx=10, pady=(0,5)) # Adicionado padx e pady inferior
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Total Despesas: R$ {total_despesas:.2f}", font=FONTE_LABEL_NORMAL, text_color="tomato").pack(anchor="w", padx=10, pady=(0,5))
+
 
         # Total Proventos (no frame lateral)
-        total_proventos_label = customtkinter.CTkLabel(monthly_totals_side_frame, text=f"Total Proventos: R$ {total_proventos:.2f}", font=FONTE_LABEL_BOLD, text_color="lightgreen")
-        total_proventos_label.pack(anchor="w", padx=10, pady=(0,5)) # Adicionado padx e pady inferior
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Total Proventos: R$ {total_proventos:.2f}", font=FONTE_LABEL_NORMAL, text_color="lightgreen").pack(anchor="w", padx=10, pady=(0,5))
+
 
         # Total Cartão de Crédito (NOVO CAMPO)
-        customtkinter.CTkLabel(monthly_totals_side_frame, text=f"Cartão de Crédito: R$ {total_cartao_credito:.2f}", font=FONTE_LABEL_BOLD, text_color="orange").pack(anchor="w", pady=(5,5), padx=10)
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Cartão Crédito: R$ {total_cartao_credito:.2f}", font=FONTE_LABEL_NORMAL, text_color="orange").pack(anchor="w", pady=(5,5), padx=10)
 
         # Total Pago em Conta (NOVO CAMPO)
-        customtkinter.CTkLabel(monthly_totals_side_frame, text=f"Pago em Conta: R$ {total_conta_corrente:.2f}", font=FONTE_LABEL_BOLD, text_color="cyan").pack(anchor="w", pady=(5,5), padx=10)
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Pago em Conta: R$ {total_conta_corrente:.2f}", font=FONTE_LABEL_NORMAL, text_color="cyan").pack(anchor="w", pady=(5,5), padx=10)
 
         # Total "A Pagar" (NOVO CAMPO)
-        customtkinter.CTkLabel(monthly_totals_side_frame, text=f"A Pagar: R$ {total_a_pagar_valor:.2f}", font=FONTE_LABEL_BOLD, text_color="yellow").pack(anchor="w", pady=(5,5), padx=10)
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"A Pagar: R$ {total_a_pagar_valor:.2f}", font=FONTE_LABEL_NORMAL, text_color="yellow").pack(anchor="w", pady=(5,5), padx=10)
 
         # Saldo em Conta (NOVO CAMPO)
-        customtkinter.CTkLabel(monthly_totals_side_frame, text=f"Saldo em Conta: R$ {saldo_em_conta:.2f}", font=FONTE_LABEL_BOLD, text_color=cor_saldo_em_conta).pack(anchor="w", pady=(5,5), padx=10)
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Saldo em Conta: R$ {saldo_em_conta:.2f}", font=FONTE_LABEL_NORMAL, text_color=cor_saldo_em_conta).pack(anchor="w", pady=(5,5), padx=10)
 
         # Saldo (no frame lateral)
         saldo = total_proventos - total_despesas
         saldo_color = "lightgreen" if saldo >=0 else "tomato"
-        customtkinter.CTkLabel(monthly_totals_side_frame, text=f"Saldo do Mês: R$ {saldo:.2f}", font=FONTE_LABEL_BOLD, text_color=saldo_color).pack(anchor="w", pady=(5,10), padx=10) # Adicionado padx e pady inferior
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Saldo do Mês: R$ {saldo:.2f}", font=FONTE_LABEL_NORMAL, text_color=saldo_color).pack(anchor="w", pady=(5,10), padx=10)
 
     def _display_month_transactions(self):
         all_despesas_raw = [t for t in self.all_transactions_for_month if t['category_type'] == 'Despesa']

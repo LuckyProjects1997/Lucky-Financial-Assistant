@@ -370,7 +370,7 @@ class Dashboard(customtkinter.CTk):
         self.header_frame.grid_remove()
         # self.actions_container_frame.grid_remove() # Não existe mais
     
-        detalhes_view = DetalhesMensaisView(master=self.main_content_area, current_user_id=self.current_user_id, 
+        detalhes_view = DetalhesMensaisView(master=self.main_content_area, current_user_id=self.current_user_id,
                                             selected_year=selected_year, close_callback=self._show_dashboard_view,
                                             main_dashboard_refresh_callback=self._refresh_dashboard_data)
         detalhes_view.pack(expand=True, fill="both")
