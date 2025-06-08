@@ -1,9 +1,18 @@
 # c:\Users\lucas.couto\Downloads\form_detalhes_mensais_fixado_scroll.py
 # form_detalhes_mensais.py
 import customtkinter
+import sys # Add
+import os  # Add
+
+# --- INÍCIO DA CORREÇÃO PARA PYLANCE E EXECUÇÃO DIRETA ---
+script_directory = os.path.dirname(os.path.abspath(__file__))
+if script_directory not in sys.path:
+    sys.path.append(script_directory)
+# --- FIM DA CORREÇÃO ---
 import re # Para remover a informação de parcela da descrição
 # import tkinter as tk # Para constantes de alinhamento
 from Database import get_category_summary_for_month, get_transactions_for_month # Importa funções do Database
+from form_categoria_detalhes_transacoes import FormCategoriaDetalhesTransacoesWindow # Importa a nova janela
 from form_transacao import FormTransacaoWindow # Importa a janela de formulário de transação
 from form_consulta_transacao import FormConsultaTransacaoWindow # Importa a janela de consulta de transação
 import datetime # Para formatação de datas
@@ -35,6 +44,13 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
         self.all_transactions_for_month = [] # Para armazenar as transações do mês selecionado
         self.form_transacao_window_ref = None # Referência para a janela de cadastro de transação
         self.form_consulta_transacao_window = None # Referência para a janela de consulta
+        self.form_categoria_detalhes_window = None # Referência para a janela de detalhes da categoria
+
+        # Dicionários para armazenar o estado de ordenação
+        # { 'column': header_text, 'direction': 'asc' ou 'desc' }
+        self.despesas_sort_state = {'column': None, 'direction': 'asc'}
+        self.proventos_sort_state = {'column': None, 'direction': 'asc'}
+
 
         # --- Frame Principal ---
         main_frame = customtkinter.CTkFrame(self, fg_color="#1c1c1c") # Cor de fundo para a view
@@ -143,7 +159,23 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
         close_button = customtkinter.CTkButton(bottom_actions_frame, text="Fechar", command=self._handle_close,
                                                height=30, font=(FONTE_FAMILIA, 12, "bold"),
                                                corner_radius=BOTAO_CORNER_RADIUS, fg_color="gray50", hover_color="gray40") # Movido para row=5
-        close_button.grid(row=0, column=2, padx=5)
+        close_button.grid(row=0, column=2, padx=5) # type: ignore
+
+    def _open_categoria_detalhes_window(self, category_id, category_name, month_number, month_name):
+        """Abre a janela de detalhes de transações para uma categoria específica."""
+        if self.form_categoria_detalhes_window is None or not self.form_categoria_detalhes_window.winfo_exists():
+            self.form_categoria_detalhes_window = FormCategoriaDetalhesTransacoesWindow(
+                master=self, # Master é esta janela de DetalhesMensais
+                user_id=self.current_user_id,
+                year=self.selected_year,
+                category_id=category_id,
+                category_name=category_name,
+                month_number=month_number,
+                month_name=month_name
+            )
+            self.form_categoria_detalhes_window.focus()
+        else:
+            self.form_categoria_detalhes_window.focus()
 
     def month_detail_selected(self, month_name, year, user_id):
         month_number = self.months_list.index(month_name) + 1
@@ -154,6 +186,9 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
         if hasattr(self, 'right_placeholder_label') and self.right_placeholder_label.winfo_exists():
             self.right_placeholder_label.grid_forget()
 
+        # Resetar o estado de ordenação ao mudar de mês
+        self.despesas_sort_state = {'column': None, 'direction': 'asc'}
+        self.proventos_sort_state = {'column': None, 'direction': 'asc'}
         # Limpar conteúdo anterior das tabelas de detalhes e do resumo
         for widget in self.despesas_details_scroll_frame.winfo_children():
             widget.destroy()
@@ -222,14 +257,25 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
                 elif item['category_type'] == 'Provento':
                     item_text_color = "lightgreen"
                 
-                customtkinter.CTkLabel(cat_summary_frame, text=item['category_name'], font=FONTE_LABEL_NORMAL, text_color=item_text_color).grid(row=current_summary_row, column=0, sticky="w")
-                customtkinter.CTkLabel(cat_summary_frame, text=f"R$ {item['total_value']:.2f}", font=FONTE_LABEL_NORMAL, text_color=item_text_color).grid(row=current_summary_row, column=1, sticky="e")
+                cat_name_label = customtkinter.CTkLabel(cat_summary_frame, text=item['category_name'], font=FONTE_LABEL_NORMAL, text_color=item_text_color, cursor="hand2")
+                cat_name_label.grid(row=current_summary_row, column=0, sticky="w")
+                
+                total_val_label = customtkinter.CTkLabel(cat_summary_frame, text=f"R$ {item['total_value']:.2f}", font=FONTE_LABEL_NORMAL, text_color=item_text_color, cursor="hand2")
+                total_val_label.grid(row=current_summary_row, column=1, sticky="e")
+
+                # Bind click para abrir detalhes da categoria
+                cat_id_for_click = item['category_id']
+                cat_name_for_click = item['category_name']
+                
+                cat_name_label.bind("<Button-1>", lambda e, cid=cat_id_for_click, cname=cat_name_for_click, mn=month_number, mname=month_name: self._open_categoria_detalhes_window(cid, cname, mn, mname))
+                total_val_label.bind("<Button-1>", lambda e, cid=cat_id_for_click, cname=cat_name_for_click, mn=month_number, mname=month_name: self._open_categoria_detalhes_window(cid, cname, mn, mname))
+
                 current_summary_row += 1
 
                 if item['category_type'] == 'Despesa':
                     total_despesas += item['total_value']
                 elif item['category_type'] == 'Provento':
-                    total_proventos += item['total_value']
+                    total_proventos += item['total_value'] # type: ignore
 
             # Adiciona uma linha separadora antes do TOTAL
             separator = customtkinter.CTkFrame(cat_summary_frame, height=1, fg_color="gray50")
@@ -279,16 +325,111 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
         customtkinter.CTkLabel(monthly_totals_side_frame, text=f"Saldo do Mês: R$ {saldo:.2f}", font=FONTE_LABEL_BOLD, text_color=saldo_color).pack(anchor="w", pady=(5,10), padx=10) # Adicionado padx e pady inferior
 
     def _display_month_transactions(self):
-        despesas = [t for t in self.all_transactions_for_month if t['category_type'] == 'Despesa']
+        all_despesas_raw = [t for t in self.all_transactions_for_month if t['category_type'] == 'Despesa']
         proventos = [t for t in self.all_transactions_for_month if t['category_type'] == 'Provento']
 
-        self._populate_transaction_table(self.despesas_details_scroll_frame, despesas, "Despesa")
+        # Separar despesas fixas das normais
+        despesas_fixas = []
+        despesas_normais = []
+
+        for d in all_despesas_raw:
+            # Consideramos uma despesa como fixa se "(Fixo)" estiver na descrição
+            if "(Fixo)" in d.get('description', ''):
+                despesas_fixas.append(d)
+            else:
+                despesas_normais.append(d)
+
+        # Ordenar cada lista (opcional, mas bom para consistência, por exemplo, por data de vencimento)
+        despesas_fixas_sorted = sorted(despesas_fixas, key=lambda x: x.get('due_date', ''))
+        despesas_normais_sorted = sorted(despesas_normais, key=lambda x: x.get('due_date', ''))
+
+        # Concatenar, com as fixas primeiro
+        despesas_final_sorted = despesas_fixas_sorted + despesas_normais_sorted
+
+        self._populate_transaction_table(self.despesas_details_scroll_frame, despesas_final_sorted, "Despesa")
         self._populate_transaction_table(self.proventos_details_scroll_frame, proventos, "Provento")
+
+    def _sort_table(self, event, header_text, transaction_type):
+        """Chamado quando um cabeçalho de coluna é clicado para ordenar."""
+        sort_state = self.despesas_sort_state if transaction_type == "Despesa" else self.proventos_sort_state
+
+        # Se clicar na coluna que já está sendo ordenada, inverte a direção
+        if sort_state['column'] == header_text:
+            sort_state['direction'] = 'desc' if sort_state['direction'] == 'asc' else 'asc'
+        else:
+            # Se clicar em uma nova coluna, define como a coluna de ordenação e direção ascendente
+            sort_state['column'] = header_text
+            sort_state['direction'] = 'asc'
+
+        print(f"DEBUG: Sorting {transaction_type} table by '{header_text}' in '{sort_state['direction']}' order.")
+
+        # Dispara a repopulação das tabelas, que aplicará a ordenação e os filtros
+        self._display_month_transactions()
 
     def _populate_transaction_table(self, parent_frame, transactions, transaction_type):
         # Limpa o conteúdo anterior do frame
         for widget in parent_frame.winfo_children():
             widget.destroy()
+
+        current_sort_state = self.despesas_sort_state if transaction_type == "Despesa" else self.proventos_sort_state
+
+        # Cabeçalhos e colunas
+        col_weights = [1, 3, 2, 1, 1, 1, 1, 1, 1] 
+        headers = ["Data", "Descrição", "Categoria", "V. Parcela", "V. Total", "Status", "Modalidade", "Parcela", "Forma Pag."]
+
+        # --- Cabeçalhos da Tabela ---
+        for i, header_text in enumerate(headers):
+            parent_frame.grid_columnconfigure(i, weight=col_weights[i]) # Configura peso da coluna
+            anchor_val = "w" if header_text in ["Descrição", "Categoria", "V. Parcela", "V. Total", "Forma Pag."] else "center"
+            
+            # Adiciona indicador de ordenação se esta coluna estiver sendo ordenada
+            sort_indicator = ""
+            if current_sort_state['column'] == header_text:
+                sort_indicator = " ▲" if current_sort_state['direction'] == 'asc' else " ▼"
+
+            # Torna o cabeçalho clicável para ordenação
+            header_label = customtkinter.CTkLabel(parent_frame, text=f"{header_text}{sort_indicator}", font=FONTE_LABEL_PEQUENA, anchor=anchor_val, cursor="hand2")
+            header_label.grid(row=0, column=i, sticky="ew", padx=2) # Cabeçalhos na linha 0
+            header_label.bind("<Button-1>", lambda event, ht=header_text, tt=transaction_type: self._sort_table(event, ht, tt))
+
+        # A lista de transações não é mais filtrada por texto aqui
+        filtered_transactions = list(transactions) 
+        
+        # --- Aplicar Ordenação ---
+        if current_sort_state['column']:
+            sort_column = current_sort_state['column']
+            sort_direction = current_sort_state['direction']
+            
+            # Mapeamento de cabeçalho para chave de dados e tipo para ordenação correta
+            sort_key_map = {
+                "Data": ('due_date', 'date'),
+                "Descrição": ('description', 'string'),
+                "Categoria": ('category_name', 'string'),
+                "V. Parcela": ('value', 'number'),
+                "V. Total": ('value', 'total_value'), # Requer cálculo do total
+                "Status": ('status', 'string'),
+                "Modalidade": ('modality', 'string'),
+                "Parcela": ('installments', 'installment_number'), # Requer extração do número
+                "Forma Pag.": ('payment_method', 'string')
+            }
+            
+            sort_info = sort_key_map.get(sort_column)
+            if sort_info:
+                sort_db_key, sort_type = sort_info
+                
+                def get_sort_value(trans):
+                    # Lógica para extrair o valor correto para ordenação com base no tipo
+                    if sort_type == 'date':
+                        return datetime.datetime.strptime(trans.get(sort_db_key, '1900-01-01'), "%Y-%m-%d").date() if trans.get(sort_db_key) else datetime.date.min
+                    elif sort_type == 'number':
+                        return trans.get(sort_db_key, 0.0)
+                    elif sort_type == 'total_value':
+                         return trans.get('value', 0.0) * int(trans.get('installments', '1/1').split('/')[1]) if '/' in trans.get('installments', '1/1') else trans.get('value', 0.0)
+                    elif sort_type == 'installment_number':
+                         return int(trans.get(sort_db_key, '0/1').split('/')[0]) if '/' in trans.get(sort_db_key, '0/1') else 0
+                    return str(trans.get(sort_db_key, '')).lower() # Default para string (case-insensitive)
+                
+                filtered_transactions = sorted(filtered_transactions, key=get_sort_value, reverse=(sort_direction == 'desc'))
 
         if not transactions:
             customtkinter.CTkLabel(
@@ -296,25 +437,16 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
                 text=f"Nenhuma transação de {transaction_type.lower()} para este mês.",
                 font=FONTE_LABEL_NORMAL,
                 text_color="gray60"
-            ).grid(row=1, column=0, columnspan=8, pady=20, padx=10)
+            ).grid(row=1, column=0, columnspan=len(headers), pady=20, padx=10) # Mensagem na linha 1 (após cabeçalhos)
             return
-
-        # Cabeçalhos
-        col_weights = [1, 3, 2, 1, 1, 1, 1, 1, 1] # Adicionada uma coluna para Forma de Pagamento
-        headers = ["Data", "Descrição", "Categoria", "V. Parcela", "V. Total", "Status", "Modalidade", "Parcela", "Forma Pag."]
-
-        for i, header_text in enumerate(headers):
-            parent_frame.grid_columnconfigure(i, weight=col_weights[i])
-            anchor_val = "w" if header_text in ["Descrição", "Categoria", "V. Parcela", "V. Total", "Forma Pag."] else "center"
-            customtkinter.CTkLabel(
-                parent_frame,
-                text=header_text,
-                font=FONTE_LABEL_PEQUENA,
-                anchor=anchor_val
-            ).grid(row=0, column=i, sticky="ew", padx=2)
+        
+        if not filtered_transactions:
+            # Esta mensagem não será mais atingida se a filtragem por texto for removida.
+            customtkinter.CTkLabel(parent_frame, text="Nenhuma transação para exibir.", font=FONTE_LABEL_NORMAL, text_color="gray60").grid(row=1, column=0, columnspan=len(headers), pady=20, padx=10)
+            return 
 
         # Linhas de Transação
-        for row_idx, trans in enumerate(transactions, start=1):
+        for row_idx, trans in enumerate(filtered_transactions, start=1): # Dados começam na linha 1
             widgets = []
             # Data
             try:

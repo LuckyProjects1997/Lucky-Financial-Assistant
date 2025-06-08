@@ -5,6 +5,13 @@ import os   # Para resource_path e manipulação de sys.path
 
 # print(f"DEBUG: sys.path in Dashboard.py before imports: {sys.path}") # Optional debug print
 from PIL import Image # Adicionado para carregar a imagem do logo
+# --- INÍCIO DA CORREÇÃO PARA PYLANCE E EXECUÇÃO DIRETA ---
+# Adiciona o diretório do script atual (que deve ser 'App') ao sys.path.
+script_directory = os.path.dirname(os.path.abspath(__file__))
+if script_directory not in sys.path:
+    sys.path.append(script_directory)
+# --- FIM DA CORREÇÃO ---
+
 import datetime # Para obter o ano atual 
 # from form_cadastro import FormCadastroWindow # Removido
 from form_cadastro_categoria import FormCadastroCategoriaWindow # Importa o formulário de categoria

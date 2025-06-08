@@ -211,6 +211,27 @@ def update_category(category_id, name, category_type, color):
         return False
     finally:
         conn.close()
+
+def update_category_for_group(group_id, new_category_id):
+    """Updates the category_id for all transactions belonging to a specific group."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        print(f"DEBUG DB: Attempting to update category for group ID: {group_id} to category ID: {new_category_id}")
+        cursor.execute("""
+            UPDATE transactions
+            SET category_id = ?
+            WHERE transaction_group_id = ?
+        """, (new_category_id, group_id))
+        conn.commit()
+        updated_count = cursor.rowcount
+        print(f"DEBUG DB: Successfully updated category for {updated_count} transaction(s) in group {group_id}.")
+        return True
+    except sqlite3.Error as e:
+        print(f"Erro ao atualizar categoria para o grupo ID '{group_id}': {e}")
+        return False
+    finally:
+        conn.close()
 def add_transaction(transaction_id_base, user_id, category_id, original_description, total_value, initial_due_date, initial_payment_date=None, initial_status=None, initial_payment_method=None, modality=None, num_installments=None, source_provento_id=None, launch_date=None, transaction_group_id=None):
     """Adiciona uma nova transação ao banco de dados.
     Se for parcelado, cria múltiplas entradas. O payment_method é aplicado apenas à primeira parcela se for 'Pago'.
@@ -463,6 +484,7 @@ def get_category_summary_for_month(user_id, year, month_number):
     cursor = conn.cursor()
     query = """
         SELECT
+            c.id AS category_id, -- Adicionado category_id
             c.name AS category_name,
             c.type AS category_type,
             c.color AS category_color,
@@ -484,7 +506,13 @@ def get_category_summary_for_month(user_id, year, month_number):
     results = cursor.fetchall()
     print(f"DEBUG DB: get_category_summary_for_month (SUM) - Raw results: {results}") # Keep this for now
     conn.close()
-    return results
+    return [
+        {
+            "category_id": row["category_id"], "category_name": row["category_name"],
+            "category_type": row["category_type"], "category_color": row["category_color"],
+            "total_value": row["total_value"]
+        } for row in results
+    ]
 
 def get_category_totals_for_year(user_id, year, category_type):
     """
@@ -719,6 +747,46 @@ def get_annual_expenses_by_payment_method(user_id, year):
     # Por concisão, vou omitir a repetição, mas a lógica é a mesma.
     # Você pode adaptar a query acima.
     pass # Implementar se necessário, similar à função mensal.
+
+# --- Nova Função para buscar transações de uma categoria em um período ---
+def get_transactions_for_category_period(user_id, category_id, year, month_number=None):
+    """
+    Busca todas as transações para um usuário, categoria, ano e, opcionalmente, mês.
+    Se month_number for None, busca para o ano inteiro.
+    Retorna uma lista de dicionários.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    base_query = """
+        SELECT
+            t.id, t.description, t.value, t.due_date, t.payment_date,
+            t.status, t.modality, t.installments, t.payment_method,
+            c.name AS category_name, c.type AS category_type
+        FROM
+            transactions t
+        JOIN
+            categories c ON t.category_id = c.id
+        WHERE
+            t.user_id = ? AND
+            t.category_id = ? AND
+            SUBSTR(t.due_date, 1, 4) = ?
+    """
+    params = [user_id, category_id, str(year)]
+
+    if month_number:
+        base_query += " AND CAST(SUBSTR(t.due_date, 6, 2) AS INTEGER) = ?"
+        params.append(month_number)
+    
+    base_query += " ORDER BY t.due_date ASC, t.id ASC;"
+    
+    cursor.execute(base_query, tuple(params))
+    results = cursor.fetchall()
+    conn.close()
+    
+    return [dict(row) for row in results]
+
+
 
 
 # Bloco para inicializar o banco de dados quando este script for executado diretamente (opcional, para teste).

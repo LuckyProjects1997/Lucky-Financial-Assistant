@@ -60,6 +60,7 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
         self.pencil_icon_image = None # Atributo para armazenar a imagem do ícone
 
         self._load_icons() # Carrega os ícones
+        self.status_var.trace_add("write", self._update_payment_method_editability) # Trace para o status
         self._load_transaction_data() # This can set _initialization_successful to False
 
         if not self._initialization_successful:
@@ -264,6 +265,8 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
 
        
 
+    # Chamada inicial para garantir que a visibilidade do meio de pagamento esteja correta
+        self._update_payment_method_editability()
     def _update_form_fields(self):
         """Atualiza os campos do formulário com os dados de self.transaction_data."""
         if not self.transaction_data:
@@ -316,7 +319,10 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             elif db_key == "payment_method":
                 display_text = raw_value if raw_value else "N/A"
                 if widget_type == "radios_payment_method":
-                    self.payment_method_consult_var.set(display_text if display_text != "N/A" else None) # Define como None se for N/A para não selecionar radio
+                    # Se display_text for "N/A", self.payment_method_consult_var.get() retornará "None" (string)
+                    # Se display_text for um valor válido, ele será setado.
+                    # Se raw_value for None, display_text é "N/A", e setamos para "None" (string)
+                    self.payment_method_consult_var.set(display_text if display_text != "N/A" else "None")
             else: # Campos de texto simples ou IDs
                 display_text = str(raw_value) if raw_value is not None else "N/A"
                 input_text_or_val = display_text
@@ -336,6 +342,50 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
                 if self.is_editing and widget_type != "label_only":
                     if db_key in ["due_date", "payment_date"] and input_widget.cget("state") == "normal":
                         self.format_date_entry(None, input_widget)
+        
+        # Após atualizar todos os campos, reavaliar a editabilidade do meio de pagamento
+        # Isso é importante se _update_form_fields for chamado após uma alteração de dados (ex: salvar)
+        # self._update_payment_method_editability() # Movido para _set_all_fields_to_display_mode e _setup_ui
+
+    def _update_payment_method_editability(self, *args):
+        """Controla a visibilidade e editabilidade do campo Meio de Pagamento."""
+        if not hasattr(self, 'transaction_data') or not self.transaction_data:
+            return # Ainda não carregou os dados da transação
+
+        current_status_selection = self.status_var.get()
+        transaction_category_type = self.transaction_data.get('category_type')
+        pm_elements = self.field_elements.get("payment_method")
+
+        if not pm_elements or not pm_elements.get("input"):
+            return
+
+        payment_method_frame = pm_elements["input"] # CTkFrame dos rádios
+        radios_pm = pm_elements.get("radios_pm", [])
+        icon_pm = pm_elements.get("icon")
+
+        # Condição para o meio de pagamento ser relevante
+        is_relevant = (current_status_selection == "Pago" and transaction_category_type == "Despesa")
+        # O campo de status está atualmente em modo de edição?
+        status_radios = self.field_elements.get("status", {}).get("radios", [])
+        status_field_is_editable = any(r.cget("state") == "normal" for r in status_radios)
+
+        if is_relevant and status_field_is_editable:
+            payment_method_frame.grid(row=pm_elements["row"], column=1, sticky="ew", padx=5, pady=(5,2))
+            for radio in radios_pm:
+                radio.configure(state="normal")
+            if icon_pm: # O ícone de lápis para payment_method não é usual se os rádios são habilitados diretamente
+                icon_pm.grid_remove() # Normalmente, não mostramos lápis para rádios que são auto-habilitados
+
+            current_pm_value = self.payment_method_consult_var.get()
+            if current_pm_value == "None" or not current_pm_value: # "None" (string) ou vazio
+                self.payment_method_consult_var.set("Conta Corrente") # Padrão
+        else:
+            payment_method_frame.grid_remove()
+            if icon_pm and icon_pm.winfo_ismapped():
+                icon_pm.grid_remove()
+            for radio in radios_pm:
+                radio.configure(state="disabled")
+            # Não resetamos o payment_method_consult_var aqui, _update_form_fields fará isso com base nos dados.
 
     def _save_changes(self):
         if not self.transaction_data:
@@ -385,13 +435,27 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
                 # Status é sempre lido da self.status_var, que é atualizada pelos radio buttons
                 updated_data["status"] = self.status_var.get()
 
+            
+            # Adicionar category_type ao updated_data para a validação, vindo dos dados originais da transação
+            updated_data["category_type"] = self.transaction_data.get("category_type")
+
             # --- Coleta do Meio de Pagamento ---
-            if "payment_method" in self.field_elements and self.field_elements["payment_method"].get("is_alterable_for_this_transaction", False):
-                pm_elements = self.field_elements["payment_method"]
-                if pm_elements["input"].cget("state") == "normal": # Se os radios estavam ativos
-                    updated_data["payment_method"] = self.payment_method_consult_var.get()
-                elif updated_data.get("status") != "Pago": # Se não estava ativo e status não é pago, limpa
+            pm_elements = self.field_elements.get("payment_method")
+            if pm_elements and pm_elements["input"]:
+                # Se o NOVO status é "Pago" E o tipo é "Despesa" E o frame dos rádios está visível
+                if updated_data["status"] == "Pago" and updated_data["category_type"] == "Despesa" and pm_elements["input"].winfo_ismapped():
+                    pm_value_from_var = self.payment_method_consult_var.get()
+                    if pm_value_from_var == "None" or not pm_value_from_var: # String "None" ou vazio
+                        updated_data["payment_method"] = None # Considera não preenchido
+                    else:
+                        updated_data["payment_method"] = pm_value_from_var
+                elif updated_data["status"] != "Pago": # Se o novo status não é "Pago", limpa o meio de pagamento
                     updated_data["payment_method"] = None
+                else: # Status é Pago, mas tipo não é Despesa, ou campo não estava visível
+                      # Mantém o valor original se o tipo for Despesa, senão None.
+                    original_pm = self.transaction_data.get("payment_method")
+                    # Note: This logic might need refinement if you want to preserve PM for Proventos Pago
+                    updated_data["payment_method"] = original_pm if updated_data["category_type"] == "Despesa" else None
             
             if "category_name" in self.field_elements: # O input widget é para category_name
                 cat_elements = self.field_elements["category_name"]
@@ -401,6 +465,7 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
                 else:
                     selected_category_name = self.transaction_data.get("category_name", "N/A")
 
+                original_category_id = self.transaction_data.get("category_id") # Store original category ID
                 categories = Database.get_categories_by_user(self.transaction_data.get("user_id"))
                 selected_category_obj = next((cat for cat in categories if cat['name'] == selected_category_name), None)
                 if not selected_category_obj:
@@ -427,7 +492,8 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             if updated_data.get("status") == "Pago" and not updated_data.get("due_date"):
                 updated_data["due_date"] = updated_data.get("payment_date")
 
-            if updated_data.get("status") == "Pago" and updated_data.get("category_type") == "Despesa" and not updated_data.get("payment_method"):
+            # Validação crucial para meio de pagamento
+            if updated_data.get("status") == "Pago" and updated_data["category_type"] == "Despesa" and not updated_data.get("payment_method"):
                 CTkMessagebox(title="Erro de Validação", message="Meio de pagamento é obrigatório para despesas pagas.", icon="warning", master=self)
                 return
             success = Database.update_transaction(
@@ -442,12 +508,29 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             )
 
             if success:
+                message = "Transação atualizada com sucesso!"
+
+                # --- Check if category changed for a despesa installment and update group ---
+                group_id = self.transaction_data.get('transaction_group_id')
+                original_modality = self.transaction_data.get('modality')
+                original_category_type = self.transaction_data.get('category_type')
+                new_category_id = updated_data.get('category_id')
+
+                # Check if it's a Despesa, part of a group (likely Parcelado or Fixo), and category changed
+                if original_category_type == 'Despesa' and group_id and new_category_id != original_category_id:
+                    # Check if it's actually a multi-part transaction (not a single 'À vista' with a group_id)
+                    is_multi_installment = original_modality == 'Parcelado' or self.transaction_data.get('installments') != '1/1'
+
+                    if is_multi_installment:
+                        print(f"DEBUG: Category changed for Despesa installment (ID: {self.transaction_id}, Group ID: {group_id}). Updating group...")
+                        group_update_success = Database.update_category_for_group(group_id, new_category_id)
+                        if group_update_success:
+                            message += "\nCategoria atualizada para todas as parcelas."
                 CTkMessagebox(title="Sucesso", message="Transação atualizada com sucesso!", icon="check", master=self)
+                # Call the callback BEFORE destroying the window
                 if self.on_action_completed_callback:
                     self.on_action_completed_callback()
-                # self._toggle_edit_mode() # Não mais necessário
-                self._load_transaction_data() 
-                self._set_all_fields_to_display_mode() # Volta para o modo de visualização
+                self.after(50, self.destroy) # Schedule destruction after a short delay
             else:
                 CTkMessagebox(title="Erro", message="Falha ao atualizar a transação.", icon="cancel", master=self)
 
@@ -518,7 +601,10 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
                     CTkMessagebox(title="Sucesso", message=f"Transação {message_suffix} com sucesso!", icon="check", master=self.master)
                     if self.on_action_completed_callback:
                         self.on_action_completed_callback()
-                    self.destroy()
+                    
+                    # Agenda a destruição da janela após um pequeno atraso,
+                    # permitindo que a CTkMessagebox finalize suas operações (como retornar o foco).
+                    self.after(50, self.destroy) # Atraso de 50ms
                 else:
                     CTkMessagebox(title="Erro", message="Falha ao excluir a transação.", icon="cancel", master=self)
             except Exception as e:
@@ -551,9 +637,18 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
         if widget_type == "radios_status":
             for radio in elements["radios"]:
                 radio.configure(state="normal")
-        elif widget_type == "radios_payment_method": # Adicionado para payment_method
-            for radio_pm in elements.get("radios_pm", []): # Corrigido para usar a chave correta
-                radio_pm.configure(state="normal")
+        # Após habilitar os rádios de status, atualiza a visibilidade/editabilidade do meio de pagamento
+            self._update_payment_method_editability()
+        elif widget_type == "radios_payment_method":
+            # Esta seção é para quando o usuário clica no ÍCONE de lápis do Meio de Pagamento.
+            # A editabilidade principal é controlada por _update_payment_method_editability via mudança de status.
+            # Se o campo for alterável (status já é Pago e tipo Despesa), habilita os rádios.
+            if elements.get("is_alterable_for_this_transaction", False):
+                for radio_pm in elements.get("radios_pm", []):
+                    radio_pm.configure(state="normal")
+                # Garante um valor selecionado se nenhum estiver
+                if self.payment_method_consult_var.get() == "None" or not self.payment_method_consult_var.get():
+                    self.payment_method_consult_var.set(self.transaction_data.get("payment_method") or "Conta Corrente")
         else: # entry, combobox
             input_widget.configure(state="normal")
             input_widget.focus() # Define o foco para o campo de entrada
@@ -590,15 +685,14 @@ class FormConsultaTransacaoWindow(customtkinter.CTkToplevel):
             if widget_type == "radios_status":
                 for radio in elements["radios"]:
                     radio.configure(state="disabled")
-            elif widget_type == "radios_payment_method": # Adicionado para payment_method
-                for radio_pm in elements.get("radios_pm", []): # Corrigido para usar a chave correta
-                    radio_pm.configure(state="disabled")
+            # A desabilitação dos rádios de payment_method é feita por _update_payment_method_editability
             else: # entry, combobox
                 input_widget.configure(state="disabled")
         
         self.save_button.configure(state="disabled") # Desabilita o botão Salvar
         self.is_editing = False
         self._update_form_fields() # Atualiza os labels de display com os dados atuais
+        self._update_payment_method_editability() # Garante que o meio de pagamento reflita o estado atual
 
     def format_date_entry(self, event, entry_widget):
         """Formata a entrada de data para DD/MM/AAAA enquanto o usuário digita."""

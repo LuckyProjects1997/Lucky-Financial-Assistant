@@ -1,11 +1,21 @@
 import customtkinter
 # import tkinter as tk # Para constantes de alinhamento
 # Importa funções do Database (pode ser necessário no futuro para planejamento)
+import sys # Add
+import os  # Add
+
+# --- INÍCIO DA CORREÇÃO PARA PYLANCE E EXECUÇÃO DIRETA ---
+script_directory = os.path.dirname(os.path.abspath(__file__))
+if script_directory not in sys.path:
+    sys.path.append(script_directory)
+# --- FIM DA CORREÇÃO ---
+# Importa funções do Database (pode ser necessário no futuro para planejamento)
 import Database # Importa o módulo Database para buscar transações
 import datetime # Para formatação de datas
 import re # Para manipulação de strings (descrição da transação)
 from form_consulta_transacao import FormConsultaTransacaoWindow # Para abrir detalhes da transação
 from collections import defaultdict # Para somar categorias
+from form_categoria_detalhes_transacoes import FormCategoriaDetalhesTransacoesWindow # Importa a nova janela
 from form_simulador import FormSimuladorWindow # Importar o formulário de simulador
 
 # Definições de fonte padrão (pode ajustar conforme necessário)
@@ -43,6 +53,7 @@ class PlanejamentoView(customtkinter.CTkFrame): # Herda de CTkFrame
         self.current_month_name_selected = None # Para rastrear o mês selecionado
         self.all_transactions_for_month = [] # Para armazenar as transações do mês selecionado
         self.form_consulta_transacao_window = None # Referência para a janela de consulta
+        self.form_categoria_detalhes_window = None # Referência para a janela de detalhes da categoria
 
         # --- Frame Principal ---
         main_frame = customtkinter.CTkFrame(self, fg_color="#1c1c1c") # Cor de fundo para a view
@@ -144,6 +155,23 @@ class PlanejamentoView(customtkinter.CTkFrame): # Herda de CTkFrame
         # Armazenar referências aos comboboxes das despesas
         self.despesa_provento_comboboxes = {} # {despesa_id: combobox_widget}
 
+    def _open_categoria_detalhes_window(self, category_id, category_name):
+        """Abre a janela de detalhes de transações para uma categoria específica."""
+        if self.form_categoria_detalhes_window is None or not self.form_categoria_detalhes_window.winfo_exists():
+            if self.current_month_name_selected:
+                month_number = self.months_list.index(self.current_month_name_selected) + 1
+                self.form_categoria_detalhes_window = FormCategoriaDetalhesTransacoesWindow(
+                    master=self, # Master é esta janela de Planejamento
+                    user_id=self.current_user_id,
+                    year=self.selected_year,
+                    category_id=category_id,
+                    category_name=category_name,
+                    month_number=month_number,
+                    month_name=self.current_month_name_selected
+                )
+                self.form_categoria_detalhes_window.focus()
+        else:
+            self.form_categoria_detalhes_window.focus()
     def month_selected_for_planning(self, month_name, year, user_id):
         month_number = self.months_list.index(month_name) + 1
         print(f"DEBUG: month_selected_for_planning - Mês: {month_name}, Ano: {year}, User ID: {user_id}")
@@ -504,21 +532,36 @@ class PlanejamentoView(customtkinter.CTkFrame): # Herda de CTkFrame
         if not despesas_do_mes:
             customtkinter.CTkLabel(soma_cat_container_right, text="Nenhuma despesa para somar categorias.", font=FONTE_LABEL_NORMAL, text_color="gray60").pack(anchor="w", padx=5, pady=2)
         else:
-            category_sums_right = defaultdict(float)
+            # Modificado para armazenar também o ID da categoria
+            category_sums_right = defaultdict(lambda: {'total': 0.0, 'id': None})
             for despesa in despesas_do_mes:
-                category_sums_right[despesa['category_name']] += despesa['value']
+                cat_name = despesa['category_name']
+                category_sums_right[cat_name]['total'] += despesa['value']
+                if category_sums_right[cat_name]['id'] is None: # Armazena o ID da primeira ocorrência
+                    category_sums_right[cat_name]['id'] = despesa['category_id']
 
             if not category_sums_right:
                 customtkinter.CTkLabel(soma_cat_container_right, text="Nenhuma categoria de despesa encontrada.", font=FONTE_LABEL_NORMAL, text_color="gray60").pack(anchor="w", padx=5, pady=2)
             else:
                 soma_cat_items_frame_right = customtkinter.CTkFrame(soma_cat_container_right, fg_color="transparent")
                 soma_cat_items_frame_right.pack(fill="x", padx=0, pady=0)
+                
+                # Ordenar pelo nome da categoria para exibição
+                for cat_name, data in sorted(category_sums_right.items()):
+                    total_val = data['total']
+                    cat_id = data['id']
 
-                for cat_name, total_val in sorted(category_sums_right.items()):
                     cat_item_frame_right = customtkinter.CTkFrame(soma_cat_items_frame_right, fg_color="transparent")
                     cat_item_frame_right.pack(fill="x", padx=5, pady=1)
-                    customtkinter.CTkLabel(cat_item_frame_right, text=f"{cat_name}:", font=FONTE_LABEL_NORMAL, anchor="w").pack(side="left", padx=(0,5))
-                    customtkinter.CTkLabel(cat_item_frame_right, text=f"R$ {total_val:.2f}", font=FONTE_LABEL_NORMAL, text_color="tomato", anchor="e").pack(side="left", padx=5)
+                    
+                    name_label = customtkinter.CTkLabel(cat_item_frame_right, text=f"{cat_name}:", font=FONTE_LABEL_NORMAL, anchor="w", cursor="hand2")
+                    name_label.pack(side="left", padx=(0,5))
+                    value_label = customtkinter.CTkLabel(cat_item_frame_right, text=f"R$ {total_val:.2f}", font=FONTE_LABEL_NORMAL, text_color="tomato", anchor="e", cursor="hand2")
+                    value_label.pack(side="left", padx=5)
+
+                    if cat_id: # Só adiciona o bind se tivermos um ID de categoria
+                        name_label.bind("<Button-1>", lambda e, cid=cat_id, cname=cat_name: self._open_categoria_detalhes_window(cid, cname))
+                        value_label.bind("<Button-1>", lambda e, cid=cat_id, cname=cat_name: self._open_categoria_detalhes_window(cid, cname))
 
 
         # --- (Placeholder para Sugestão de Alocação Futura) ---
@@ -555,7 +598,7 @@ class PlanejamentoView(customtkinter.CTkFrame): # Herda de CTkFrame
         """Abre a janela de consulta para uma transação específica."""
         if self.form_consulta_transacao_window is None or not self.form_consulta_transacao_window.winfo_exists():
             self.form_consulta_transacao_window = FormConsultaTransacaoWindow(
-                master=self, # O master é esta janela de Planejamento
+                master=self.winfo_toplevel(), # O master deve ser a janela top-level (Dashboard)
                 transaction_id=transaction_id,
                 on_action_completed_callback=self._refresh_after_action
             )
