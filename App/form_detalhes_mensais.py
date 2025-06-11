@@ -305,31 +305,31 @@ class DetalhesMensaisView(customtkinter.CTkFrame): # ALTERADO: Herda de CTkFrame
 
          # Título para esta seção de totais
         customtkinter.CTkLabel(self.monthly_totals_display_frame, text="Totais do Mês", font=FONTE_LABEL_BOLD).pack(anchor="w", pady=(10,10), padx=10)
-
+    
         # Total Despesas (no frame lateral)
-        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Total Despesas: R$ {total_despesas:.2f}", font=FONTE_LABEL_NORMAL, text_color="tomato").pack(anchor="w", padx=10, pady=(0,5))
-
-
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Total Despesas: R$ {total_despesas:.2f}", font=FONTE_LABEL_NORMAL, text_color="tomato").pack(anchor="w", padx=10, pady=(0,2)) # pady reduzido
+    
+    
         # Total Proventos (no frame lateral)
-        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Total Proventos: R$ {total_proventos:.2f}", font=FONTE_LABEL_NORMAL, text_color="lightgreen").pack(anchor="w", padx=10, pady=(0,5))
-
-
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Total Proventos: R$ {total_proventos:.2f}", font=FONTE_LABEL_NORMAL, text_color="lightgreen").pack(anchor="w", padx=10, pady=(0,2)) # pady reduzido
+    
+    
         # Total Cartão de Crédito (NOVO CAMPO)
-        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Cartão Crédito: R$ {total_cartao_credito:.2f}", font=FONTE_LABEL_NORMAL, text_color="orange").pack(anchor="w", pady=(5,5), padx=10)
-
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Cartão Crédito: R$ {total_cartao_credito:.2f}", font=FONTE_LABEL_NORMAL, text_color="orange").pack(anchor="w", pady=(2,2), padx=10) # pady reduzido
+    
         # Total Pago em Conta (NOVO CAMPO)
-        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Pago em Conta: R$ {total_conta_corrente:.2f}", font=FONTE_LABEL_NORMAL, text_color="cyan").pack(anchor="w", pady=(5,5), padx=10)
-
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Pago em Conta: R$ {total_conta_corrente:.2f}", font=FONTE_LABEL_NORMAL, text_color="cyan").pack(anchor="w", pady=(2,2), padx=10) # pady reduzido
+    
         # Total "A Pagar" (NOVO CAMPO)
-        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"A Pagar: R$ {total_a_pagar_valor:.2f}", font=FONTE_LABEL_NORMAL, text_color="yellow").pack(anchor="w", pady=(5,5), padx=10)
-
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"A Pagar: R$ {total_a_pagar_valor:.2f}", font=FONTE_LABEL_NORMAL, text_color="yellow").pack(anchor="w", pady=(2,2), padx=10) # pady reduzido
+    
         # Saldo em Conta (NOVO CAMPO)
-        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Saldo em Conta: R$ {saldo_em_conta:.2f}", font=FONTE_LABEL_NORMAL, text_color=cor_saldo_em_conta).pack(anchor="w", pady=(5,5), padx=10)
-
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Saldo em Conta: R$ {saldo_em_conta:.2f}", font=FONTE_LABEL_NORMAL, text_color=cor_saldo_em_conta).pack(anchor="w", pady=(2,2), padx=10) # pady reduzido
+    
         # Saldo (no frame lateral)
         saldo = total_proventos - total_despesas
         saldo_color = "lightgreen" if saldo >=0 else "tomato"
-        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Saldo do Mês: R$ {saldo:.2f}", font=FONTE_LABEL_NORMAL, text_color=saldo_color).pack(anchor="w", pady=(5,10), padx=10)
+        customtkinter.CTkLabel(self.monthly_totals_display_frame, text=f"Saldo do Mês: R$ {saldo:.2f}", font=FONTE_LABEL_NORMAL, text_color=saldo_color).pack(anchor="w", pady=(2,5), padx=10) # pady reduzido
 
     def _display_month_transactions(self):
         all_despesas_raw = [t for t in self.all_transactions_for_month if t['category_type'] == 'Despesa']
